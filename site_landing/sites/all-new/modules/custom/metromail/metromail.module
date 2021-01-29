@@ -1,0 +1,1182 @@
+<?php
+
+include_once('metromail.features.inc');
+
+/**
+ * @name constants Constants definitions.
+ * @{
+ */
+
+/**
+ *  Indicating whether the message is broadcast.
+ *  This value will be stored in the "uid_to" field.
+ */
+define('METROMAIL_BROADCAST', 0);
+
+/**
+ * Default metromail message type.
+ */
+define('METROMAIL_MESSAGE_DEFAULT', 'message');
+
+/**
+ * Machine name of the "email me on new messages" flag.
+ */
+define('METROMAIL_NOTIFY_FLAG', 'metromail_notify_flag');
+
+/**
+ * The key for the notification email about new private metromail message.
+ */
+define('METROMAIL_CREATOR_NAME', 'new_metromail_notification');
+
+/**
+ * The key of the notification email about new broadcast metromail message.
+ */
+define('METROMAIL_BROADCAST_CREATOR_NAME', 'new_broadcast_metromail_notification');
+
+/**
+ * @} End of "name constants".
+ */
+
+/**
+ * @name hooks Hook implementations.
+ * @{
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function metromail_menu() {
+  return array(
+    'metromail' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'metromail',
+      'access callback' => 'user_is_logged_in',
+      'page callback' => 'metromail_goto',
+      'page arguments' => array('metromail'),
+      'file' => 'metromail.pages.inc',
+    ),
+    'user/%user/metromail' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'metromail',
+      'access callback' => 'metromail_view_metromail_access',
+      'access arguments' => array(1),
+      'page callback' => 'metromail_overview',
+      'page arguments' => array(1),
+      'file' => 'metromail.pages.inc',
+    ),
+    'ajax-metromail-more/%user/%' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'AJAX Callback for the "View More" link',
+      'access callback' => 'metromail_view_metromail_access',
+      'access arguments' => array(1),
+      'page callback' => 'metromail_overview_more',
+      'page arguments' => array(1, 2),
+      'file' => 'metromail.pages.inc',
+    ),
+    'ajax-metromail-thread/%metromail_message' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'AJAX Callback for the "Thread" link',
+      'access callback' => 'metromail_view_metromail_thread_access',
+      'access arguments' => array(1),
+      'page callback' => 'metromail_thread_view',
+      'page arguments' => array(1),
+      'file' => 'metromail.pages.inc',
+    ),
+    // AJAX Callback for the "Reply" link:
+    'ajax-metromail-reply/%user/%metromail_message/%metromail_message' => array(
+      'type' => MENU_CALLBACK,
+      'title callback' => '_metromail_reply_title',
+      'title arguments' => array(1),
+      'access callback' => 'metromail_reply_message_access',
+      'access arguments' => array(1, 2, 3),
+      'page callback' => 'metromail_reply_message_page',
+      'page arguments' => array(1, 2, 3),
+      'file' => 'metromail.pages.inc',
+    ),
+    'admin/content/metromail' => array(
+      'title' => 'metromail',
+      'access arguments' => array('administer metromail'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metromail_settings_form'),
+      'file' => 'metromail.admin.inc',
+    ),
+    'admin/content/metromail/settings' => array(
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'title' => 'Settings',
+      'weight' => -1,
+    ),
+    'admin/content/metromail/broadcast' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'Send broadcast mesasge',
+      'access arguments' => array('send broadcast messages via metromail'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metromail_broadcast_form'),
+      'file' => 'metromail.admin.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function metromail_perm() {
+  return array(
+    'administer metromail',
+    'send broadcast messages via metromail',
+    'send messages via metromail',
+  );
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function metromail_theme() {
+  return array(
+    // Returns HTML output of metromail page.
+    'metromail_page' => array(
+      'arguments' => array('themed_messages' => NULL, 'flag' => NULL, 'view_more' => NULL),
+    ),
+    // Returns HTML output of messages thread.
+    'metromail_thread' => array(
+      'arguments' => array('thread' => NULL),
+    ),
+    // Returns HTML output of multiple metromail messages.
+    'metromail_messages' => array(
+      'arguments' => array('account' => NULL, 'messages' => NULL),
+    ),
+    // Returns HTML output of a single metromail message.
+    'metromail_message' => array(
+      'arguments' => array('message' => NULL),
+      'template' => 'metromail-message',
+      // You can also use metromail-message--MESSAGE_TYPE.tpl.php templates.
+      'pattern' => 'metromail_message__',
+    ),
+    // Returns the "View more" link.
+    'metromail_more' => array(
+      'arguments' => array('account' => NULL, 'offset' => NULL),
+    ),
+    'metromail_user_picture' => array(
+      'arguments' => array('account' => NULL),
+    ),
+    'metromail_system_picture' => array(
+      'arguments' => array(),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_user().
+ */
+function metromail_user($op, &$edit, &$account, $category = NULL) {
+  switch ($op) {
+    case 'delete':
+      metromail_delete_orphan_messages($account->uid);
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_flag_access().
+ */
+function metromail_flag_access($flag, $content_id, $action, $account) {
+  if ($flag->name == METROMAIL_NOTIFY_FLAG) {
+    // User can only "flag" himself.
+    if (!$account->uid || $content_id != $account->uid) {
+      return FALSE;
+    }
+  }
+}
+
+/**
+ * Implementation of hook_mailcreators_info().
+ */
+function metromail_mailcreators_info() {
+  return array(
+    // sends notification e-mails about new private messages.
+    METROMAIL_CREATOR_NAME => array(
+      'class' => 'metromailCreator',
+      'parent' => NULL,
+      'file' => 'metromail.mailcreators.inc',
+    ),
+    // another class for broadcast messages.
+    METROMAIL_BROADCAST_CREATOR_NAME => array(
+      'class' => 'BroadcastmetromailCreator',
+      'parent' => NULL,
+      'file' => 'metromail.mailcreators.inc',
+    )
+  );
+}
+
+/**
+ * Implementation of hook_db_test().
+ *
+ * Defines new DB test for the db_consistency module.
+ * It looks for a messages whose senders and recipients
+ * no loger exist in database (users have been deleted by admin,
+ * by themselves or even directly from database).
+ */
+function metromail_db_test() {
+  return array(
+    'metromail.orphan_messages' => array(
+      'title' => t('Orphan metromail messages'),
+      'description' => t('Check if messages belong to unexisting users.'),
+      'table' => 'metromail_messages',
+      'severity' => 'error',
+      'test_query' => "
+        SELECT COUNT(m.mid)
+        FROM {metromail_messages} m
+        LEFT JOIN {users} u ON m.uid_to = u.uid
+        LEFT JOIN {users} u2 ON m.uid_from = u2.uid
+        WHERE u.uid IS NULL AND u2.uid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "
+        SELECT m.mid
+        FROM {metromail_messages} m
+        LEFT JOIN {users} u ON m.uid_to = u.uid
+        LEFT JOIN {users} u2 ON m.uid_from = u2.uid
+        WHERE u.uid IS NULL AND u2.uid IS NULL",
+      'error_list_description' => 'IDs of orphan messages: @list',
+      'fixes' => array(
+        'metromail_delete_orphan_messages' => array(
+          'description' => t('Delete all messages whose sender and recipients no longer exist.'),
+          'query' => "
+            DELETE mm FROM {metromail_messages} mm
+            LEFT JOIN {users} u ON u.uid = mm.uid_from
+            LEFT JOIN {users} u2 ON u2.uid = mm.uid_to
+            WHERE u.uid IS NULL AND u2.uid IS NULL
+          ",
+        ),
+      ),
+    ),
+    'metromail.invalid_parents' => array(
+      'title' => t('metromail messages with invalid parents'),
+      'description' => t('Check if messages respond to unexistent messages.'),
+      'table' => 'metromail_messages',
+      'severity' => 'error',
+      'test_query' => "
+      SELECT COUNT(m.mid)
+      FROM {metromail_messages} m
+      LEFT JOIN {metromail_messages} m2 ON m2.mid = m.pid
+      WHERE m.pid != 0 AND m2.mid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "
+      SELECT m.mid
+      FROM {metromail_messages} m
+      LEFT JOIN {metromail_messages} m2 ON m2.mid = m.pid
+      WHERE m.pid != 0 AND m2.mid IS NULL",
+      'error_list_description' => 'IDs of orphan messages: @list',
+      'fixes' => array(
+        'metromail_delete_messages_with_invalid_parents' => array(
+          'description' => t('Delete all messages with invalid parents.'),
+          'query' => "
+          DELETE m FROM {metromail_messages} m
+          LEFT JOIN {metromail_messages} m2 ON m2.mid = m.pid
+          WHERE m.pid != 0 AND m2.mid IS NULL
+          ",
+        ),
+      ),
+    ),
+    'metromail.missing_threads' => array(
+      'title' => t('metromail messages belong to the missing threads.'),
+      'description' => t('Checks if messages belong to unexistent threads.'),
+      'table' => 'metromail_messages',
+      'severity' => 'error',
+      'test_query' => "
+      SELECT COUNT(m.mid)
+      FROM {metromail_messages} m
+      LEFT JOIN {metromail_messages} m2 ON m2.mid = m.thread_id
+      WHERE m.thread_id != 0 AND m2.mid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "
+      SELECT m.mid
+      FROM {metromail_messages} m
+      LEFT JOIN {metromail_messages} m2 ON m2.mid = m.thread_id
+      WHERE m.thread_id != 0 AND m2.mid IS NULL",
+      'error_list_description' => 'IDs of messages belonging to the missing threads: @list',
+      'fixes' => array(
+        'metromail_delete_messages_in_missing_threads' => array(
+          'description' => t('Delete all messages from the missing threads..'),
+          'query' => "
+          DELETE m FROM {metromail_messages} m
+          LEFT JOIN {metromail_messages} m2 ON m2.mid = m.thread_id
+          WHERE m.thread_id != 0 AND m2.mid IS NULL
+          ",
+        ),
+      ),
+    ),
+    'metromail.invalid_threads' => array(
+      'title' => t('metromail messages belong to the invalid threads.'),
+      'description' => t('Checks whether there are messages belonging to threads whose owners do not match with message owners.'),
+      'table' => 'metromail_messages',
+      'severity' => 'error',
+      'test_query' => "
+      SELECT COUNT(m.mid)
+      FROM {metromail_messages} m
+      LEFT JOIN {metromail_messages} m2 ON m2.mid = m.thread_id
+      WHERE m2.uid_to NOT IN (m.uid_to, m.uid_from) OR m2.uid_from NOT IN (m.uid_to, m.uid_from)",
+      'test_type' => 'negative',
+      'error_list_query' => "
+      SELECT m.mid
+      FROM {metromail_messages} m
+      LEFT JOIN {metromail_messages} m2 ON m2.mid = m.thread_id
+      WHERE m2.uid_to NOT IN (m.uid_to, m.uid_from) OR m2.uid_from NOT IN (m.uid_to, m.uid_from)",
+      'error_list_description' => 'IDs of messages belonging to the invalid threads: @list',
+      'fixes' => array(
+        'metromail_delete_messages_in_invalid_threads' => array(
+          'description' => t('Delete all messages with invalid threads.'),
+          'query' => "
+          DELETE m FROM {metromail_messages} m
+          LEFT JOIN {metromail_messages} m2 ON m2.mid = m.thread_id
+          WHERE m2.uid_to NOT IN (m.uid_to, m.uid_from) OR m2.uid_from NOT IN (m.uid_to, m.uid_from)
+          ",
+        ),
+      ),
+    ),
+    'metromail.ambiguous_threads' => array(
+      'title' => t('metromail messages with ambiguous threads.'),
+      'description' => t('Checks whether there are messages which thread IDs do not match with their parent\'s thread IDs.'),
+      'table' => 'metromail_messages',
+      'severity' => 'error',
+      'test_query' => "
+      SELECT COUNT(m.mid)
+      FROM {metromail_messages} m
+      INNER JOIN {metromail_messages} m2 ON m2.mid = m.pid
+      WHERE m2.pid <> 0 AND m.thread_id != m2.thread_id",
+      'test_type' => 'negative',
+      'error_list_query' => "
+      SELECT m.mid
+      FROM {metromail_messages} m
+      INNER JOIN {metromail_messages} m2 ON m2.mid = m.pid
+      WHERE m2.pid <> 0 AND m.thread_id != m2.thread_id",
+      'error_list_description' => 'IDs of messages with ambiguous threads: @list',
+      'fixes' => array(
+        'metromail_delete_messages_with_ambiguous_threads' => array(
+          'description' => t('Delete all messages with ambiguous threads.'),
+          'query' => "
+          DELETE m FROM {metromail_messages} m
+          INNER JOIN {metromail_messages} m2 ON m2.mid = m.pid
+          WHERE m2.pid <> 0 AND m.thread_id != m2.thread_id",
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * @} End of "name hooks".
+ */
+
+/**
+ * @name api API implementations.
+ * @{
+ */
+
+
+/**
+ * Prepares and sends a special message.
+ *
+ * It gets settings for a given message type, checks if this message type is enabled,
+ * and, if so, sends it.
+ *
+ * @param $type
+ *   The type of this message. It is used to get template for a given message type.
+ * @param $params
+ *   An associative array containing:
+ *   - uid_from: The UID of the user who sends this message. 0 means this is a system message.
+ *   - uid_to:  The UID of the user who will receive this message.
+ *   - template: The message template.
+ *   - placeholders: An associative array of available placeholders.
+ *
+ * @return
+ *   TRUE on success, FALSE otherwise.
+ */
+function metromail_send_special_message($type, $params) {
+  $settings = _metromail_get_message_type_settings($type);
+  if (!empty($settings['enabled'])) {
+    $message = array(
+      'type' => $type,
+      'uid_from' => $params['uid_from'],
+      'uid_to' => $params['uid_to'],
+      'body' => $settings['template'],
+      'data' => (isset($params['data']) ? $params['data'] : array()),
+    );
+    // Save placeholders values to user during message view.
+    $message['data']['placeholders'] = $params['placeholders'];
+    metromail_send_message($message);
+    return (isset($message->mid));
+  }
+  return FALSE;
+}
+
+/**
+ * Saves a metromail message in database.
+ *
+ * @param $message
+ *   An associative array containing:
+ *   - pid: The id of message to which this message is a reply.
+ *     0 means this is a root message in a thread.
+ *   - thread_id: The id of root message in a thread.
+ *     0 means this is it.
+ *   - type: The type of this message. Not more than 32 characters.
+ *   - body: The body of this message.
+ *   - uid_from: The UID of the user who sends this message. 0 means this is a system message.
+ *   - uid_to: The recipient's UID. 0 means this is broadcast message.
+ *   - sent: (optional) UNIX timestamp when this message was saved in database.
+ *     If not specified, this will be a current timestamp.
+ *   - data: (optional) An array of additional data about this message.
+ *     E.g. it may contain the list of recipients if this is a broadcast message.
+ *
+ * @return
+ *   StdClass object of saved message on success, FALSE otherwise.
+ *
+ * @see metromail_send_broadcast_message()
+ * @see metromail_broadcast_form_submit()
+ * @see metromail_send_message_form_submit()
+ * @see metromail_reply_message_form_submit()
+ */
+function metromail_send_message($message) {
+  $message += array(
+    'pid' => 0,
+    'thread_id' => 0,
+    'was_read' => 0,
+    'sent' => time(),
+    'data' => array(),
+  );
+  drupal_write_record('metromail_messages', $message);
+  if (isset($message['mid'])) {
+    metromail_notify_recipient($message);
+  }
+  return $message;
+}
+
+/**
+ * Saves a metromail broadcast message in database.
+ *
+ * @param $message
+ *   An associative array containing:
+ *   - pid: The id of message to which this message is a reply.
+ *     0 means this is a root message in a thread.
+ *   - thread_id: The id of root message in a thread.
+ *     0 means this is it.
+ *   - type: The type of this message. Not more than 32 characters.
+ *   - body: The body of this message.
+ *   - uid_from: The UID of the user who sends this message. 0 means this is a system message.
+ *   - uid_to: The recipient's UID. 0 means this is broadcast message.
+ *   - sent: (optional) UNIX timestamp when this message was saved in database.
+ *     If not specified, this will be a current timestamp.
+ *   - data: (optional) An array of additional data about this message.
+ *     E.g. it may contain the list of recipients if this is a broadcast message.
+ *
+ * @return
+ *   StdClass object of saved message on success, FALSE otherwise.
+ *
+ * @see metromail_broadcast_form_submit()
+ */
+function metromail_send_broadcast_message($message) {
+  $message['uid_to'] = METROMAIL_BROADCAST;
+  $message = metromail_send_message($message);
+  if (isset($message['mid'])) {
+    metromail_notify_everyone($message);
+  }
+  return $message;
+}
+
+/**
+ * Loads metromail message from database.
+ *
+ * @param $mid
+ *   The message unique ID
+ * @return
+ *   StdClass object of message on success or FALSE otherwise.
+ */
+function metromail_message_load($mid) {
+  $message = db_fetch_object(db_query('SELECT * FROM {metromail_messages} WHERE mid = %d', $mid));
+  if (isset($message->mid)) {
+    $message = _metromail_message_afterload($message);
+  }
+  return $message;
+}
+
+/**
+ * Display a given message.
+ *
+ * @param $message
+ *   StdClass object of message.
+ *
+ * @return
+ *   HTML output of themed message.
+ */
+function metromail_message_view($message) {
+  // Allow other modules to change message.
+  drupal_alter('metromail_message', $message);
+  // Suggests using metromail-message--MESSAGE_TYPE.tpl.php:
+  $suggestions = array('metromail_message__'. $message->type, 'metromail_message');
+  return theme($suggestions, $message);
+}
+
+/**
+ * Loads thread tree from database.
+ *
+ * @param $account
+ *   stdClass object of user whose messages we are loading.
+ * @param $thread_id
+ *   The ID of root message in a thread.
+ * @param $desc
+ *   (optional) Indicating whether sorting is descending. This is used when loading thread children.
+ *
+ * @return
+ *   Full loaded thread tree.
+ *
+ * @see metromail_thread_view()
+ */
+function metromail_load_thread($thread_id, $desc = FALSE) {
+  $tree = array();
+  $branch = array();
+  // Do not change sorting. It must be ASC.
+  $result = db_query('SELECT * FROM {metromail_messages} WHERE thread_id = %d ORDER BY mid ASC', $thread_id);
+  while ($message = db_fetch_object($result)) {
+    $message = _metromail_message_afterload($message);
+    $branch[$message->mid] = array(
+      'message' => $message,
+      'children' => array(),
+    );
+    // firstly we add second-level messages into a tree.
+    if ($message->pid == $thread_id) {
+      _metromail_add_item_into_a_tree($tree, $branch[$message->mid], $desc);
+    }
+    // The parent of this message is already in branch due to ASC sorting.
+    elseif (isset($branch[$message->pid])) {
+      _metromail_add_item_into_a_tree($branch[$message->pid]['children'], $branch[$message->mid], $desc);
+    }
+    else {
+      // this will never happen if sorting is ASC.
+    }
+  }
+  return $tree;
+}
+
+/**
+ * Load user's metromail messages from database.
+ *
+ * @param $uid_to
+ *   The UID of the user whose messages you want lo load.
+ * @param $count
+ *   The maximum number of result rows to return.
+ * @param $offset
+ *   (Optional) The first result row to return.
+ * @param $load_threads
+ *   (Optional) An array of thread IDS to expand.
+ *
+ * @return
+ *   An array of loaded user messages on success, empty array otherwise.
+ *
+ * @see metromail_overview()
+ * @see metromail_overview_more()
+ */
+function metromail_load_user_messages($account, $count, $offset = 0, $load_threads = array()) {
+  $messages = array();
+  $args = array($account->uid, $account->uid, METROMAIL_BROADCAST, $account->created);
+  $result = db_query_range(
+    'SELECT m.*, COUNT(m2.mid) AS children_count, MAX(m2.sent) AS last_message_in_thread
+     FROM {metromail_messages} m
+     LEFT JOIN {metromail_messages} m2
+     ON m2.thread_id = m.mid OR (m2.thread_id = 0 AND m2.mid = m.mid)
+     WHERE m.pid = 0 AND (m.uid_to = %d OR m.uid_from = %d OR m.uid_to = %d) AND m.sent > %d
+     GROUP BY m.mid
+     ORDER BY last_message_in_thread DESC', $args, $offset, $count);
+  while ($message = db_fetch_object($result)) {
+    // This message is included in m2 table so decrement counter
+    $message = _metromail_message_afterload($message);
+    if ($message->children_count && !empty($load_threads) && in_array($message->mid, $load_threads)) {
+      $message->thread = metromail_load_thread($message->mid, TRUE);
+    }
+    $messages[$message->mid] = $message;
+  }
+  return $messages;
+}
+
+/**
+ * @} End of "name api".
+ */
+
+/**
+ * @name helper Helper functions.
+ * @{
+ */
+
+/**
+ * Makes nesessary changes on message after loading from database.
+ *
+ * @param $message
+ *   StdClass object of initial message.
+ *
+ * @return
+ *   StdClass object of changed message.
+ *
+ * @see metromail_message_load()
+ * @see metromail_load_thread()
+ * @see metromail_load_user_messages()
+ */
+function _metromail_message_afterload($message) {
+  $message->data = unserialize($message->data);
+  if (isset($message->children_count)) {
+    // This is userd in metromail_load_user_messages().
+    $message->children_count--;
+  }
+  return $message;
+}
+
+/**
+ * Access callback for the metromail page.
+ *
+ * Checks if user has permissions to view metromail page.
+ * Even admins can't access other user's metromail.
+ *
+ * @param $account
+ *   stdClass object of account to check.
+ *
+ * @return
+ *   TRUE or FALSE.
+ *
+ * @see metromail_overview()
+ * @see metromail_overview_more()
+ */
+function metromail_view_metromail_access($account) {
+  global $user;
+  return ($user->uid == 1) || ($user->uid && $user->uid == $account->uid);
+}
+
+/**
+ * Access callback for the "Thread" link.
+ *
+ * It checks if user belongs to provided thread (means user is sender or recipient of thread message).
+ * @param $thread_message
+ */
+function metromail_view_metromail_thread_access($thread_message) {
+  global $user;
+  // @TODO: access to broadcast threads
+  return $user->uid && ($user->uid == $thread_message->uid_to || $user->uid == $thread_message->uid_from);
+}
+
+/**
+ * Checks if user has permissions to send messages via metromail.
+ *
+ * Users can send messages only from their own profiles.
+ *
+ * @param $account
+ *   stdClass object of account to check.
+ *
+ * @return
+ *   TRUE of FALSE
+ *
+ * @see metromail_send_message_form()
+ */
+function metromail_send_message_access($account) {
+  global $user;
+  return ($user->uid && $user->uid == $account->uid && user_access('send messages via metromail'));
+}
+
+/**
+ * Checks whether user can access reply form.
+ *
+ * @param $user_to
+ *   An account of recipient user.
+ * @param $thread_message
+ *   stdClass Of the root message in a thread.
+ * @param $parent_message
+ *   stdClass Of the message user replies to.
+ *
+ * @return
+ *   TRUE if user can reply on $parent_message, FALSE otherwise.
+ */
+function metromail_reply_message_access($user_to, $thread_message, $parent_message) {
+  global $user;
+  // user can reply on his own messages, but he can't reply to himself:
+  if (!$user_to->uid || $user_to->uid == $user->uid) {
+    return FALSE;
+  }
+  // Check if provided parent belongs to thread:
+  if ($parent_message->thread_id && $parent_message->thread_id != $thread_message->mid) {
+    return FALSE;
+  }
+  if (user_access('administer metromail')) {
+    return TRUE;
+  }
+  if (!user_access('send messages via metromail')) {
+    return FALSE;
+  }
+  // Thread doesn't belong to this users:
+  if (!(($thread_message->uid_to == $user_to->uid && $thread_message->uid_from == $user->uid) || ($thread_message->uid_to == $user->uid && $thread_message->uid_from == $user_to->uid))) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ * Returns the number of messages send to the specified user.
+ *
+ * @param $uid_to
+ *   The UID of the user whose messages we need to count.
+ *
+ * @return
+ *   An integer number of messages send to specified user or 0 if user has no messages yet.
+ *
+ * @see metromail_overview()
+ * @see metromail_overview_more()
+ */
+function metromail_user_message_count($account) {
+  return db_result(db_query('SELECT COUNT(mid) FROM {metromail_messages} WHERE thread_id = 0 AND (uid_to = %d OR uid_from = %d OR uid_to = %d) AND sent > %d', $account->uid, $account->uid, METROMAIL_BROADCAST, $account->created));
+}
+
+/**
+ * Delete messages whose senders & recipiets no longer exists.
+ *
+ * Whe are looking for messages sent to this user whose sender's accounts are already deleted
+ * and delete them.
+ *
+ * @param $uid
+ *   The UID of the user whose account is going to be deleted.
+ *
+ * @see metromail_user()
+ */
+function metromail_delete_orphan_messages($uid) {
+  db_query(
+    'DELETE mm FROM {metromail_messages} mm
+    LEFT JOIN {users} u ON u.uid = mm.uid_from
+    LEFT JOIN {users} u2 ON u2.uid = mm.uid_to
+    WHERE (u.uid IS NULL AND mm.uid_to = %d) OR (u2.uid IS NULL AND mm.uid_from = %d)',
+    $uid, $uid
+  );
+}
+
+/**
+ * Notifies the message recipient about new metromail.
+ *
+ * It also checks if user wants to receive notifications.
+ *
+ * @param $message
+ *   An associative array containing:
+ *   - pid: The id of message to which this message is a reply.
+ *     0 means this is a root message in a thread.
+ *   - thread_id: The id of root message in a thread.
+ *     0 means this is it.
+ *   - type: The type of this message. Not more than 32 characters.
+ *   - body: The body of this message.
+ *   - uid_from: The UID of the user who sends this message. 0 means this is a system message.
+ *   - uid_to: The recipient's UID. 0 means this is broadcast message.
+ *   - sent: (optional) UNIX timestamp when this message was saved in database.
+ *     If not specified, this will be a current timestamp.
+ *   - data: (optional) An array of additional data about this message.
+ *     E.g. it may contain the list of recipients if this is a broadcast message.
+ *
+ * @return
+ *   TRUE on success or if user doesn't want to receive notifications.
+ *   FALSE if error occured while sending emails.
+ *
+ * @see metromail_send_message_form_submit()
+ * @see metromailCreator
+ */
+function metromail_notify_recipient($message) {
+  $status = TRUE;
+  $flag = flag_get_flag(METROMAIL_NOTIFY_FLAG);
+  // Check if recipient wants to receive emails about new message:
+  if (!$flag->is_flagged($message['uid_to'], 0, 0)) {
+    return $status; // user doesn't want to receive notifications.
+  }
+  $metromail_creator = mailcreators_get_creator(METROMAIL_CREATOR_NAME);
+  $params = array(
+    'messageObject' => (object) $message,
+    'accountTo' => user_load($message['uid_to']),
+    'accountFrom' => user_load($message['uid_from']),
+  );
+  foreach ($metromail_creator->send($params) as $result) {
+    if (!$result['status']) {
+      $status = FALSE;
+      watchdog('metromail', 'Error occured while sending notification email to @username. @moreinfo.', array('@username' => $params['accountTo']->name, '@moreinfo' => print_r($result, TRUE)), WATCHDOG_ERROR);
+    }
+  }
+  return $status;
+}
+
+/**
+ * Notifies all users about new broadcast message.
+ *
+ * It also checs if user wants to receive notifications.
+ *
+ * @param $message
+ *   An associative array containing all necessary message properties.
+ *
+ * @return
+ *   TRUE on success, FALSE otherwise.
+ *
+ * @see metromail_send_message()
+ * @see metromail_send_broadcast_message()
+ * @see BroadcastmetromailCreator
+ */
+function metromail_notify_everyone($message) {
+  $accounts = array();
+  $result = db_query("
+    SELECT u.uid, u.name, u.mail FROM {users} u
+    INNER JOIN {flag_content} fc ON fc.content_id = u.uid
+    INNER JOIN {flags} f ON f.fid = fc.fid
+    WHERE fc.content_type = '%s' AND f.name = '%s'",
+    'user', METROMAIL_NOTIFY_FLAG);
+  while ($account = db_fetch_object($result)) {
+    $accounts[$account->uid] = $account;
+  }
+  $status = TRUE;
+  if (!empty($accounts)) {
+    $broadcast_metromail_creator = mailcreators_get_creator(METROMAIL_BROADCAST_CREATOR_NAME);
+    $params = array(
+      'messageObject' => (object) $message,
+      'accounts' => $accounts,
+    );
+    foreach ($broadcast_metromail_creator->send($params) as $result) {
+      if (!$result['status']) {
+        $status = FALSE;
+        watchdog('metromail', 'Error occured while sending broadcast notification email to. @moreinfo.', array('@moreinfo' => print_r($result, 1)), WATCHDOG_ERROR);
+      }
+    }
+  }
+  return $status;
+}
+
+/**
+ * Returns settings for a given message type.
+ *
+ * This function collects all message types and their default settings defined using hook_metromail_info().
+ * It also checks whether the default settings were overridden in the admin settings form
+ * (overridden values are stored in Drupal variables).
+ *
+ * @return
+ *   An associative array containing title, default template, placeholders and other keys.
+ *   Placeholders key contains array of available placceholders.
+ *
+ * @see _metromail_notification_admin_settings()
+ */
+function _metromail_get_message_type_settings($type) {
+  static $types = array();
+  if (!isset($types[$type])) {
+    foreach (module_invoke_all('metromail_info') as $message_type => $settings) {
+      // allow to override default settings.
+      $default_enabled = isset($settings['enabled']) ? $settings['enabled'] : TRUE;
+      $settings['enabled'] = variable_get('metromail_'. $message_type .'_enabled', $default_enabled);
+      $settings['template'] = variable_get('metromail_'. $message_type .'_template', $settings['default_template']);
+      $types[$message_type] = $settings;
+    }
+    if (!isset($types[$type])) {
+      $types[$type] = FALSE;
+    }
+  }
+  return $types[$type];
+}
+
+/**
+ * Title callback for the message reply page.
+ *
+ * @param $account_to
+ *   stdClass object Of the recipient user.
+ */
+function _metromail_reply_title($account_to) {
+  return t('Reply to !username', array('!username' => $account_to->name));
+}
+
+/**
+ * Formats message body.
+ *
+ * For special messages (with placeholders) substitute it with an appropriate values,
+ * for all the other messages return HTML safe version of message body.
+ *
+ * @return
+ *   A string containing message body.
+ */
+function _metromail_format_message_body($message) {
+  if (!empty($message->data['placeholders'])) {
+    // Substitute placeholders with its values:
+    $lang = user_preferred_language(user_load($message->uid_to), language_default());
+    return t($message->body, $message->data['placeholders'], $lang->language);
+  }
+  // If no placeholders available, format plain text.
+  return nl2br(check_plain($message->body));
+}
+
+/**
+ * Formats message additions.
+ *
+ * Each message can contain module-specific additions which should be displayed below
+ * message text. Here we go through $message->data array looking for any additional info.
+ * Any key in this array indicates the module which provides additional data, so
+ * then we call $module_metromail_message_additions() hook which can return string
+ * which will be concatenated to that message.
+ *
+ * @param $message
+ *   An array representing displayed message.
+ *
+ * @see template_preprocess_metromail_message()
+ */
+function _metromail_format_message_additions($message) {
+  if (empty($message->data)) {
+    return '';
+  }
+  $output = '';
+  foreach (array_keys($message->data) as $module) {
+    // module_invoke() checks whether given hook is implemented by module.
+    $output .= module_invoke($module, 'metromail_message_additions', $message->data[$module]);
+  }
+  return $output;
+}
+
+
+/**
+ * Inserts new item into a tree.
+ *
+ * @param $parent
+ *   The parent of new item
+ * @param $item
+ *   New item
+ * @param $desc
+ *   Indicating whether sorting is descending.
+ */
+function _metromail_add_item_into_a_tree(&$parent, &$item, $desc = FALSE) {
+  if ($desc) {
+    $parent[] = &$item;
+  }
+  else {
+    array_unshift($parent, NULL);
+    $parent[0] = &$item;
+  }
+}
+
+/**
+ * @} End of "name helper".
+ */
+
+
+/**
+ * @name theme Theme implementations.
+ * @{
+ */
+
+/**
+ * Returns HTML output of metromail page.
+ *
+ * @param $themed_messages
+ *   Themed list of metromail messages.
+ * @param $flag
+ *   Email me when i get new metromail flag if user views his own metromail.
+ *   NULL otherwise.
+ * @param $view_more
+ *   View more link. This is empty div if all messages are already displayed.
+ *   NULL otherwise.
+ *
+ * @see metromail_overview()
+ */
+function theme_metromail_page($themed_messages, $flag = NULL, $view_more = NULL) {
+  $output = '';
+  if ($flag) {
+    $output .= '<div class="emailme-flag-wrapper">';
+    $output .= $flag;
+    $output .= '</div>';
+  }
+  $output .= '<div class="metromail-messages-wrapper">';
+  $output .= $themed_messages;
+  if ($view_more) {
+    $output .= $view_more;
+  }
+  $output .= '</div>';
+  return $output;
+}
+
+/**
+ * Returns HTML themed list of metromail messages.
+ *
+ * @param $account
+ *   StdClass object of recipient user.
+ * @param $messages
+ *   An array of messages.
+ *
+ * @see metromail_overview()
+ * @see metromail_overview_more()
+ */
+function theme_metromail_messages($account, $messages) {
+  $items = array();
+  if (empty($messages)) {
+    return t('You have no messages yet.');
+  }
+  foreach ($messages as $message) {
+    $items[] = metromail_message_view($message);
+  }
+  return implode('', $items);
+}
+
+/**
+ * Returns HTML output of messages thread.
+ *
+ * @param $thread
+ *   An array with full loaded tree with thread messages.
+ *   Contains following keys:
+ *   - message: stdClass message object.
+ *   - children: an array with message children.
+ */
+function theme_metromail_thread($thread) {
+  $output = '<div class="thread-wrapper">';
+  foreach ($thread as $item) {
+    $output .= metromail_message_view($item['message']);
+    if (!empty($item['children'])) {
+      $output .= '<div class="children">';
+      foreach ($item['children'] as $child) {
+        $output .= theme('metromail_thread', array($child));
+      }
+      $output .= '</div>';
+    }
+  }
+  $output .= '</div>';
+  return $output;
+}
+
+/**
+ * Returns HTML for the metromail message.
+ *
+ * @param $vars
+ *   An associative array containing:
+ *   - message: StdClass object of fully-loaded message.
+ *
+ * @see metromail_overview()
+ * @see metromail_overview_more()
+ */
+function template_preprocess_metromail_message(&$vars) {
+  global $user;
+  $message = $vars['message'];
+  // Only filtered HTML:
+  $vars['body'] = _metromail_format_message_body($message);
+  $vars['additions'] = _metromail_format_message_additions($message);
+  $vars['sent'] = format_date($message->sent);
+  if ($message->uid_from) {
+    $vars['sender'] = user_load($message->uid_from);
+    if ($vars['sender']->uid == $user->uid) {
+      $vars['sender_username'] = t('You');
+    }
+    else {
+      $vars['sender_username'] = isset($vars['sender']->uid) ? $vars['sender']->name : t('Deleted user');
+    }
+    $vars['sender_userpic'] = theme('metromail_user_picture', $vars['sender']);
+  }
+  else {
+    // if no uid_from provided this is system message
+    $vars['sender'] = drupal_anonymous_user();
+    $vars['sender_username'] = variable_get('metromail_system_name', t('metrocatch'));
+    $vars['sender_userpic'] = theme('metromail_system_picture');
+  }
+
+  $recipient = $recipient_account = user_load($message->uid_to);
+  $vars['recipient'] = $recipient;
+  if ($recipient->uid == $user->uid) {
+    $vars['recipient_name'] = t('you');
+  }
+  elseif (!$message->uid_to) {
+    // This is broadcast message.
+    $vars['recipient_name'] = t('everyone');
+  }
+  else {
+    $vars['recipient_name'] = theme('username', $recipient);
+  }
+  $recipient = ($message->uid_to == $user->uid) ? $message->uid_from : $message->uid_to;
+  if ($recipient != $recipient_account->uid) {
+    $recipient_account = user_load($recipient);
+  }
+  $thread = !empty($message->thread_id) ? $message->thread_id : $message->mid;
+  $vars['actions'] = array();
+  // for root messages with children add a "thread" link.
+  if (!$message->thread_id && $message->children_count) {
+    $expand_classes = array('metromail-thread');
+    if (isset($message->thread)) {
+      $vars['thread'] = theme('metromail_thread', $message->thread);
+      $text = t('Collapse');
+      $expand_classes[] = 'expanded';
+    }
+    else {
+      $text = t('Expand (!num)', array('!num' => $message->children_count));
+    }
+    $expand_classes = implode(' ', $expand_classes);
+    $hash = "ajax-metromail-thread/{$message->mid}";
+    $vars['actions']['thread'] = "<a href='#{$hash}' id='expand-{$message->mid}' class='{$expand_classes}'>{$text}</a>";
+    // Save number of children in Drupal.settings:
+    $settings = array(
+      'metromail' => array(
+        'children_count' => array(
+          'expand-'. $message->mid => $message->children_count,
+        ),
+      ),
+    );
+    drupal_add_js($settings, 'setting');
+  }
+  // Users can't reply on system messages:
+  if ($message->uid_from && $recipient_account && metromail_reply_message_access($recipient_account, metromail_message_load($thread), $message)) {
+    $vars['actions']['reply'] = l(t('Reply'), "ajax-metromail-reply/{$recipient}/{$thread}/{$message->mid}", array('attributes' => array('class' => 'metromail-reply'), 'query' => array('destination' => "user/{$user->uid}/metromail")));
+  }
+}
+
+/**
+ * Returns a "View more" link.
+ *
+ * @param $account
+ *   StdClass object of recipient user.
+ * @param $offset
+ *   The number of already displayed messages.
+ *
+ * @see metromail_overview()
+ * @see metromail_overview_more()
+ */
+function theme_metromail_more($account, $offset) {
+  $text = t('View More');
+  $hash = "ajax-metromail-more/{$account->uid}/{$offset}";
+  return "<a href='#{$hash}' class='metromail-more'>{$text}</a>";
+}
+
+/**
+ * Returns HTML output of user picture.
+ */
+function theme_metromail_user_picture($account) {
+  if (variable_get('user_pictures', 0)) {
+    if (module_exists('imagecache')) {
+      if (!empty($account->picture) && file_exists($account->picture)) {
+        $picture = $account->picture;
+      }
+      elseif (variable_get('user_picture_default', '')) {
+        $picture = variable_get('user_picture_default', '');
+      }
+      $alt = t("@user's picture", array('@user' => $account->name ? $account->name : variable_get('anonymous', t('Anonymous'))));
+      $picture = theme('imagecache', 'metromail_userpic', $picture, $alt, $alt);
+      if (!empty($account->uid) && user_access('access user profiles')) {
+        $attributes = array('attributes' => array('title' => t('View user profile.')), 'html' => TRUE);
+        $picture = l($picture, "user/$account->uid", $attributes);
+      }
+      return $picture;
+    }
+    else {
+      return theme('user_picture', $account);
+    }
+  }
+  return '';
+}
+
+/**
+ * Return HTML output of a system picture.
+ */
+function theme_metromail_system_picture() {
+  $picture = variable_get('metromail_system_picture', 'metromail_icon.jpg');
+  if (variable_get('user_pictures', 0) || empty($picture)) {
+    $alt = variable_get('metromail_system_name', t('metrocatch'));
+    if (module_exists('imagecache')) {
+      return theme('imagecache', 'metromail_userpic', $picture, $alt, $alt);
+    }
+    else {
+      return theme('image', $picture, $alt, $alt);
+    }
+  }
+  return '';
+}
+
+/**
+ * @} End of "name theme".
+ */

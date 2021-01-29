@@ -1,0 +1,12 @@
+name = metrocatch custom
+package = metrocatch
+description = Contains different small customizations.
+version = 6.x-1.4
+core = 6.x
+dependencies[] = popup_forms
+dependencies[] = simplenews
+dependencies[] = metromail
+dependencies[] = userpoints
+dependencies[] = metrocatch_connect
+dependencies[] = user_badges
+dependencies[] = metrocatch_uc

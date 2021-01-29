@@ -1,0 +1,2580 @@
+<?php
+/**
+ * @file
+ * General function and hook implementations
+ */
+
+// constant section
+define('METROCATCH_CONNECT_ERROR_INVALID_DATE', 1);
+define('METROCATCH_CONNECT_ERROR_INVALID_UID', 2);
+define('METROCATCH_CONNECT_ERROR_BUSY_DAY', 4);
+define('METROCATCH_CONNECT_ERROR_ALREADY_FEATURED', 8);
+define('METROCATCH_SEX_MAN', 'man');
+define('METROCATCH_SEX_WOMAN', 'woman');
+define('METROCATCH_SEX_PREFERENCE_WOMEN', 'women');
+define('METROCATCH_SEX_PREFERENCE_MEN', 'men');
+define('METROCATCH_CATCH_TYPE_FEATURE', 'feature');
+define('METROCATCH_CATCH_TYPE_SUBFEATURE', 'subfeature');
+
+// global array with messages
+global $_metrocatch_connect_error_messages;
+$_metrocatch_connect_error_messages = array(
+  METROCATCH_CONNECT_ERROR_INVALID_DATE => 'Invalid date (in past)',
+  METROCATCH_CONNECT_ERROR_INVALID_UID => 'User not found',
+  METROCATCH_CONNECT_ERROR_BUSY_DAY => 'Already exists a metrocatch feature of this type and this day',
+  METROCATCH_CONNECT_ERROR_ALREADY_FEATURED => 'This user alredy has feature or subfeature on this day',
+);
+
+/**
+ * @name hooks Hook implementations.
+ * @{
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function metrocatch_connect_menu() {
+  $items = array(
+    // user pages
+    'user/%user_uid_optional/connections' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'Connections',
+      'access callback' => 'metrocatch_connect_connections_page_access',
+      'access arguments' => array(1),
+      'page callback' => 'metrocatch_connect_connections_page',
+      'page arguments' => array(1),
+      'file' => 'metrocatch_connect.pages.inc',
+      'weight' => 9,
+    ),
+    'user/%user/sendmessage' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'Send message',
+      'access callback' => 'metrocatch_connect_sendmessage_access',
+      'access arguments' => array(1),
+      'page callback' => 'metrocatch_connect_sendmessage_page',
+      'page arguments' => array(1),
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    'user/%user/profile' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'Profile',
+      'access callback' => 'metrocatch_connect_user_profile_access',
+      'access arguments' => array(1),
+      'page callback' => 'metrocatch_connect_view_profile',
+      'page arguments' => array('full', 1),
+    ),
+    'purchase/feature' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'Become a metrocatch',
+      'access callback' => TRUE,
+      'page callback' => 'metrocatch_connect_become_metrocatch',
+      'file' => 'metrocatch_connect.pages.inc',
+      'menu_name' => 'menu-metromenu',
+    ),
+    'purchase/feature/complete' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Order completed',
+      'access callback' => TRUE,
+      'page callback' => 'metrocatch_connect_become_metrocatch_complete',
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    'purchase/connections' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'Purchase Connections',
+      'access callback' => TRUE,
+      'page callback' => 'metrocatch_connect_purchase_connections',
+      'file' => 'metrocatch_connect.pages.inc',
+      'menu_name' => 'menu-metromenu',
+    ),
+    'purchase/connections/complete' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Order completed',
+      'access callback' => TRUE,
+      'page callback' => 'metrocatch_connect_become_metrocatch_complete',
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    // metrocatch of the Day Feature Landing Page:
+    'catches/catch' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'Today\'s Catch',
+      'access callback' => TRUE,
+      'page callback' => 'metrocatch_connect_random_catch_page',
+      'file' => 'metrocatch_connect.pages.inc',
+      'menu_name' => 'menu-metromenu',
+    ),
+    'catches/catch/%user' => array(
+      'title callback' => 'metrocatch_connect_catch_page_title',
+      'title arguments' => array(2),
+      'access callback' => TRUE,
+      'page callback' => 'metrocatch_connect_catch_page',
+      'page arguments' => array(2),
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    'connections/change_state/%/%/%' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Change connection state',
+      'access callback' => TRUE,
+      'page callback' => 'metrocatch_connect_change_connection_type_page',
+      'page arguments' => array(2, 3, 4),
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    'connect/new/%user' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Connect',
+      'page callback' => 'metrocatch_connect_connect_page',
+      'page arguments' => array(2),
+      'access callback' => TRUE,
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    'metrocatch-connect/share/facebook/%user/%' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Share Catch on Facebook',
+      'page callback' => 'metrocatch_connect_share_facebook_page',
+      'page arguments' => array(3),
+      'access callback' => 'metrocatch_connect_share_facebook_access',
+      'access arguments' => array(3, 4),
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    'metrocatch-connect/share/twitter/%user/%' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Tweet Catch',
+      'page callback' => 'metrocatch_connect_share_twitter_page',
+      'page arguments' => array(3),
+      'access callback' => 'metrocatch_connect_share_twitter_access',
+      'access arguments' => array(3, 4),
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    'metrocatch-connect/share/email' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Email Catch',
+      'access callback' => TRUE,
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_connect_share_email_form'),
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    // ajax callbacks:
+    'ajax-metrocatch-connect-autocomplete' => array(
+      'title' => 'Connections autocomplete',
+      'page callback' => 'metrocatch_connect_autocomplete',
+      'access callback' => 'user_is_logged_in',
+      'type' => MENU_CALLBACK,
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    'ajax-metrocatch-connect-rotate-feature-slot' => array(
+      'title' => 'Rotates clicked catch into a featured slot.',
+      'page callback' => 'metrocatch_connect_rotate_featured_slot_page',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+    // admin pages
+    'admin/metrocatch/catches' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'Administer metrocatch Features',
+      'description' => 'List, add or remove metrocatch features.',
+      'access arguments' => array('administer metrocatch connect'),
+      'page callback' => 'metrocatch_connect_admin_list_catches',
+      'file' => 'metrocatch_connect.admin.inc',
+    ),
+    'admin/metrocatch/catches/list' => array(
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'title' => 'List',
+      'weight' => 1,
+    ),
+    'admin/metrocatch/catches/add' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'Add new',
+      'access arguments' => array('administer metrocatch connect'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_connect_admin_add_catch_form'),
+      'file' => 'metrocatch_connect.admin.inc',
+      'weight' => 2,
+    ),
+    'admin/metrocatch/catches/delete/%' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Delete feature',
+      'page callback' => 'metrocatch_connect_admin_delete_catch',
+      'page arguments' => array(4),
+      'access arguments' => array('administer metrocatch connect'),
+      'file' => 'metrocatch_connect.admin.inc',
+    ),
+    'admin/metrocatch/connections' => array(
+      'title' => 'Connections',
+      'description' => 'Manage connections.',
+      'access arguments' => array('administer metrocatch connect'),
+      'page callback' => 'metrocatch_connect_connections_overview_admin',
+      'file' => 'metrocatch_connect.admin.inc',
+    ),
+    'admin/metrocatch/connections/overview' => array(
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'title' => 'Overview',
+      'weight' => -10,
+    ),
+    'admin/metrocatch/connections/settings' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'Settings',
+      'access arguments' => array('administer metrocatch connect'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_connect_connections_settings_form'),
+      'file' => 'metrocatch_connect.admin.inc',
+      'weight' => -5,
+    ),
+    'admin/metrocatch/connections/add' => array(
+      'title' => 'Add',
+      'type' => MENU_LOCAL_TASK,
+      'access arguments' => array('administer metrocatch connect'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_connect_add_connection_form'),
+      'file' => 'metrocatch_connect.admin.inc',
+    ),
+    'admin/metrocatch/connections/%metrocatch_connect_connection/delete' => array(
+      'title' => 'Delete connection',
+      'type' => MENU_CALLBACK,
+      'access arguments' => array('administer metrocatch connect'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_connect_delete_connection_form', 3),
+      'file' => 'metrocatch_connect.admin.inc',
+    ),
+  );
+  $interests = array(
+    'men-interested-in-women' => 'Men Interested in Women',
+    'women-interested-in-men' => 'Women Interested in Men',
+    'men-interested-in-men' => 'Men Interested in Men',
+    'women-interested-in-women' => 'Women Interested in Women',
+  );
+  $weight = 1;
+  foreach ($interests as $interest => $title) {
+    list($sex, $preference) = explode('-interested-in-', $interest);
+    $sex = strtr($sex, array('men' => 'man', 'women' => 'woman'));
+    $items['catches/'. $interest] = array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => $title,
+      'access callback' => TRUE,
+      'page callback' => 'metrocatch_connect_catch_subfeature_page',
+      'page arguments' => array($sex, $preference),
+      'file' => 'metrocatch_connect.pages.inc',
+      'menu_name' => 'menu-metromenu',
+      'weight' => $weight++,
+    );
+  }
+  return $items;
+}
+
+/**
+ * Implementation of hook_menu_alter().
+ */
+function metrocatch_connect_menu_alter(&$items) {
+  // Substitute user profile access and page callabacks:
+  $items['user/%user_uid_optional']['access callback'] = 'metrocatch_connect_user_profile_access';
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function metrocatch_connect_theme() {
+  $path = drupal_get_path('module', 'metrocatch_connect') .'/templates';
+  return array(
+    'metrocatch_connect_purchase_top_block' => array(
+      'arguments' => array('text' => ''),
+    ),
+    'metrocatch_connect_connections_view' => array(
+      'arguments' => array('connections' => NULL),
+    ),
+    'metrocatch_connect_connection' => array(
+      'arguments' => array('account' => NULL, 'connection' => NULL),
+      'template' => 'metrocatch-connect-connection',
+      'path' => $path,
+    ),
+    'metrocatch_connect_connect_link' => array(
+      'arguments' => array('to' => 0, 'absolute' => NULL),
+    ),
+    'metrocatch_connect_autocomplete' => array(
+      'arguments' => array('account' => NULL),
+    ),
+    'metrocatch_connect_pending_connection_exists' => array(
+      'arguments' => array('account_from' => NULL, 'account_to' => NULL, 'connection' => NULL),
+    ),
+    'metrocatch_connect_login' => array(
+      'arguments' => array('form' => NULL),
+      'template' => 'metrocatch-connect-login',
+      'path' => $path,
+    ),
+    'metrocatch_connect_count_connections' => array(
+      'arguments' => array('account' => NULL, 'count' => NULL),
+    ),
+    'metrocatch_connect_time_left' => array(
+      'arguments' => array('catch' => NULL),
+    ),
+    'metrocatch_connect_catches_tabs' => array(
+      'arguments' => array('catches' => NULL, 'selected_catch' => NULL),
+    ),
+    'metrocatch_connect_catch_feature_page' => array(
+      'arguments' => array('catch' => NULL, 'account' => NULL),
+      'template' => 'metrocatch-connect-catch-feature-page',
+      'path' => $path,
+    ),
+    'metrocatch_connect_catch_subfeature_page' => array(
+      'arguments' => array('catch' => NULL, 'other_catches' => NULL, 'sex' => NULL, 'preference' => NULL, 'archive' => FALSE, 'close_archive_link' => FALSE),
+      'template' => 'metrocatch-connect-catch-subfeature-page',
+      'path' => $path,
+    ),
+    'metrocatch_connect_catch_preview' => array(
+      'arguments' => array('catch' => NULL),
+    ),
+    'metrocatch_connect_random_catch_page' => array(
+      'arguments' => array('catch' => NULL, 'today_catches' => NULL, 'other_catches' => NULL),
+      'template' => 'metrocatch-connect-random-catch-page',
+      'path' => $path,
+    ),
+    'metrocatch_connect_other_catches' => array(
+      'arguments' => array('catches' => NULL, 'type' => NULL, 'show_preference' => FALSE, 'imagecache_preset' => NULL, 'archive' => FALSE),
+    ),
+    'metrocatch_connect_profile_teaser' => array(
+      'arguments' => array('account' => NULL, 'data' => NULL),
+      'template' => 'metrocatch-connect-profile-teaser',
+      'path' => $path,
+    ),
+    'metrocatch_connect_profile_featured_teaser' => array(
+      'arguments' => array('account' => NULL, 'data' => NULL),
+      'template' => 'metrocatch-connect-profile-featured-teaser',
+      'path' => $path,
+    ),
+    'metrocatch_connect_profile_full' => array(
+      'arguments' => array('account' => NULL, 'data' => NULL),
+      'template' => 'metrocatch-connect-profile-full',
+      'path' => $path,
+    ),
+    'metrocatch_connect_profile_featured' => array(
+      'arguments' => array('account' => NULL, 'data' => NULL),
+      'template' => 'metrocatch-connect-profile-featured',
+      'path' => $path,
+    ),
+    'metrocatch_connect_profile_subfeatured' => array(
+      'arguments' => array('account' => NULL, 'data' => NULL),
+      'template' => 'metrocatch-connect-profile-subfeatured',
+      'path' => $path,
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_theme_registry_alter().
+ */
+function metrocatch_connect_theme_registry_alter(&$registry) {
+  // Define new theme('username') callback:
+  $registry['username']['function'] = 'theme_metrocatch_connect_username';
+  $registry['theme paths'][] = drupal_get_path('module', 'metrocatch_connect');
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function metrocatch_connect_perm() {
+  return array('administer metrocatch connect');
+}
+
+/**
+ * Implementation of hook_node_grants().
+ */
+function metrocatch_connect_node_grants($account, $op) {
+  $grants = array();
+  if ($op == 'view') {
+    // Get active user connections:
+    $connected_users = metrocatch_connect_load_user_connection_uids($account->uid);
+    // User can view profile of users who have requested connection with him.
+    $requesters = array();
+    $requests = metrocatch_connect_load_user_connections($account->uid, array('pending'));
+    foreach ($requests as $request) {
+      if ($account->uid == $request['uid_to']) {
+        $requesters[] = $request['uid_from'];
+      }
+    }
+    $grants['metrocatch_connected'] = array_unique(array_merge($connected_users, $requesters));
+  }
+  return $grants;
+}
+
+/**
+ * Implementation of hook_node_access_records().
+ */
+function metrocatch_connect_node_access_records($node) {
+  if ($node->type != 'profile') {
+    return;
+  }
+  return array(
+    array(
+      'realm' => 'metrocatch_connected',
+      'gid' => $node->uid,
+      'grant_view' => TRUE,
+      'grant_update' => FALSE,
+      'grant_delete' => FALSE,
+      'priority' => 0,
+    )
+  );
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter().
+ *
+ * If anonymous user tries to connect with somebody
+ * we show him login form and profile creation link.
+ *
+ * @see template_preprocess_metrocatch_connect_login()
+ */
+function metrocatch_connect_form_user_login_alter(&$form, &$form_state) {
+  $arg = end($form['#parameters']);
+  if (is_numeric($arg)) {
+    $form['connect'] = array(
+      '#type' => 'value',
+      '#value' => $arg,
+    );
+    $form['#redirect'] = array('connect/new/'. $arg, array('connect' => 1));
+    $form['#theme'] = 'metrocatch_connect_login';
+  }
+}
+
+/**
+ * Implementation of hook_cron().
+ */
+function metrocatch_connect_cron() {
+  // set status of temporary connections to expired
+  $rows = db_query(
+    "SELECT mcc.*
+    FROM {metrocatch_connect_connection} mcc
+    WHERE mcc.expiration_time<=%d
+    AND mcc.type IN ('%s', '%s', '%s')",
+    time(),
+    'temporary',
+    'request_permanent',
+    'pending'
+  );
+  while ($connection = db_fetch_array($rows)) {
+    $connection = _metrocatch_connect_prepare_connection($connection);
+    $connection['type'] = 'expired';
+    metrocatch_connect_save_connection($connection);
+  }
+}
+
+/**
+ * Implementation of hook_user().
+ */
+function metrocatch_connect_user($op, &$edit, &$account, $category = NULL) {
+  global $user;
+  switch ($op) {
+    case 'view':
+      if ($link = metrocatch_connect_get_new_connection_link($user, $account)) {
+        $account->content['connect'] = array(
+          '#type' => 'user_profile_category',
+          '#weight' => -6,
+          '#title' => t('Connect to this user'),
+          'link' => array(
+            '#type' => 'user_profile_item',
+            '#value' => $link,
+          ),
+        );
+      }
+      break;
+    case 'delete':
+      // Delete user features:
+      db_query("DELETE FROM {metrocatch_connect_catches} WHERE uid = %d", $account->uid);
+      // Delete user connections:
+      $all_connections = metrocatch_connect_load_user_connections($account->uid, array_keys(metrocatch_connect_get_all_connection_types()));
+      foreach ($all_connections as $connection) {
+        if ($connection['uid_to'] == $account->uid) {
+          $connection['account_to'] = $account;
+        }
+        else {
+          $connection['account_from'] = $account;
+        }
+        metrocatch_connect_remove_connection($connection);
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_popup_forms_data().
+ */
+function metrocatch_connect_popup_forms_data() {
+  return array(
+    'metrocatch_connect_connect_form' => array(
+      'params' => array('uid_from' => '0', 'uid_to' => '0'),
+      'close_buttons' => array('submit', 'metrocatch-connect-connect-button'),
+      'file' => drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.pages.inc',
+    ),
+    'metrocatch_connect_change_connection_type_form' => array(
+      'params' => array(
+        'cid' => NULL,
+        'old_type' => NULL,
+        'new_type' => NULL,
+      ),
+      'close_buttons' => array('op'),
+      'file' => drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.pages.inc',
+    ),
+    'user_login' => array(
+      'params' => array(
+        'connect_to' => NULL,
+      ),
+      'close_buttons' => array('op'),
+    ),
+    'metrocatch_connect_share_email_form' => array(
+      'params' => array(
+        'url' => NULL,
+      ),
+      'close_buttons' => array('op'),
+      'file' => drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.pages.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_mailcreators_info().
+ */
+function metrocatch_connect_mailcreators_info() {
+  return array(
+  // sends share emails.
+    'metrocatch_connect_share_mail' => array(
+      'class' => 'MetrocatchShareCreator',
+      'parent' => NULL,
+      'file' => 'metrocatch_connect.mailcreators.inc',
+    ),
+  );
+}
+
+/**
+ *  Implementation hook_db_test().
+ */
+function metrocatch_connect_db_test() {
+  return array(
+    'metrocatch_connect.catches_users_exist' => array(
+      'title' => t('Missing users in catches'),
+      'description' => t('Check if catches belong to nonexistent users.'),
+      'table' => 'metrocatch_connect_catches',
+      'severity' => 'error',
+      'test_query' =>
+        "SELECT COUNT(*) FROM {metrocatch_connect_catches} m
+        LEFT JOIN {users} u ON m.uid = u.uid
+        WHERE u.uid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' =>
+        "SELECT m.fid FROM {metrocatch_connect_catches} m
+        LEFT JOIN {users} u ON m.uid = u.uid
+        WHERE u.uid IS NULL",
+      'error_list_description' => 'Feature ids of catches which belong to missing users: @list',
+      'fixes' => array(
+        'metrocatch_connect_catches_delete_wrong_records' => array(
+          'description' => t('Delete records, that referes to non-existent users.'),
+          'query' =>
+            "DELETE FROM {metrocatch_connect_catches} m
+            LEFT JOIN {users} u ON m.uid = u.uid
+            WHERE u.uid IS NULL",
+        ),
+      ),
+    ),
+    'metrocatch_connect.catches_excess_features_exists' => array(
+      'title' => t('Catches limit per day excessed (of type "feature")'),
+      'description' => t('Check if exists more than 1 Catch Of The Day feature with the same sex, sex preference and day values.'),
+      'table' => 'metrocatch_connect_catches',
+      'severity' => 'error',
+      'test_query' =>
+        "SELECT COUNT(*) AS cnt
+        FROM {metrocatch_connect_catches} mcc
+        WHERE mcc.type='feature'
+        GROUP BY mcc.sex, mcc.sex_preference, mcc.date
+        HAVING cnt > 1",
+      'test_type' => 'negative',
+      'error_list_query' =>
+        "SELECT DATE_FORMAT(mcc.date, '%%d.%%m.%%Y')
+        FROM {metrocatch_connect_catches} mcc
+        WHERE mcc.type='feature'
+        GROUP BY mcc.sex, mcc.sex_preference, mcc.date
+        HAVING COUNT(*) > 1",
+      'error_list_description' => 'Dates, that has more than one Catch Of The Day feature with the same sex and sex preference: @list',
+    ),
+    'metrocatch_connect.catches_excess_subfeatures_exists' => array(
+      'title' => t('Catches limit per day excessed (of type "subfeature")'),
+      'description' => t('Check if exists more than 3 Catch Of The Day subfeature with the same sex, sex preference and day values.'),
+      'table' => 'metrocatch_connect_catches',
+      'severity' => 'error',
+      'test_query' =>
+        "SELECT COUNT(*) AS cnt
+        FROM {metrocatch_connect_catches} mcc
+        WHERE mcc.type='subfeature'
+        GROUP BY mcc.sex, mcc.sex_preference, mcc.date
+        HAVING cnt > 3",
+      'test_type' => 'negative',
+      'error_list_query' =>
+        "SELECT DATE_FORMAT(mcc.date, '%%d.%%m.%%Y')
+        FROM {metrocatch_connect_catches} mcc
+        WHERE mcc.type='subfeature'
+        GROUP BY mcc.sex, mcc.sex_preference, mcc.date
+        HAVING COUNT(*) > 3",
+      'error_list_description' => 'Dates, that has more than one Catch Of The Day subfeature with the same sex and sex preference: @list',
+    ),
+    'metrocatch_connect.catches_duplicate_catches_for_user' => array(
+      'title' => t('Duplicate (sub)features on the same day'),
+      'description' => t('Check that all users has no more than one catch for the each day.'),
+      'table' => 'metrocatch_connect_catches',
+      'severity' => 'error',
+      'test_query' =>
+        "SELECT * FROM {metrocatch_connect_catches} m1
+        LEFT JOIN metrocatch_connect_catches m2 ON m1.uid=m2.uid AND m1.date=m2.date AND m1.fid<>m2.fid
+        WHERE m2.fid IS NOT NULL",
+      'test_type' => 'negative',
+      'error_list_query' =>
+        "SELECT CONCAT(m1.uid, '_', DATE_FORMAT(m1.date, '%%d.%%m.%%Y'))
+        FROM {metrocatch_connect_catches} m1
+        LEFT JOIN metrocatch_connect_catches m2 ON m1.uid=m2.uid AND m1.date=m2.date AND m1.fid<>m2.fid
+        WHERE m2.fid IS NOT NULL
+        GROUP BY m1.uid, m1.date",
+      'error_list_description' => 'Uid-date pairs of users and days, that has more than one catch (sub)feature on this day: @list',
+    ),
+    'metrocatch_connect.missing_connection_users' => array(
+      'title' => t('Missing users in connections.'),
+      'description' => t('Check if there are conenctions with at least one missing user.'),
+      'table' => 'metrocatch_connect_connection',
+      'severity' => 'error',
+      'test_query' =>
+        "SELECT COUNT(cid) FROM {metrocatch_connect_connection} mc
+        LEFT JOIN {users} u ON u.uid = mc.uid_to OR u.uid = mc.uid_from
+        WHERE u.uid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' =>
+        "SELECT mc.cid FROM {metrocatch_connect_connection} mc
+        LEFT JOIN {users} u ON u.uid = mc.uid_to OR u.uid = mc.uid_from
+        WHERE u.uid IS NULL",
+      'error_list_description' => 'Connection IDs which have at least one missing user: @list',
+      'fixes' => array(
+        'metrocatch_connect_delete_connections_with_missing_users' => array(
+          'description' => t('Delete all connections with missing users.'),
+          'query' => "
+          DELETE mc FROM {metrocatch_connect_connection} mc
+          LEFT JOIN {users} u ON u.uid = mc.uid_to OR u.uid = mc.uid_from
+          WHERE u.uid IS NULL
+          ",
+        ),
+      ),
+    ),
+    'metrocatch_connect.duplicate_connections' => array(
+      'title' => t('Duplicate connections between users.'),
+      'description' => t('Check if there is more than one active connection between two users.'),
+      'table' => 'metrocatch_connect_connection',
+      'severity' => 'error',
+      'test_query' =>
+        "SELECT COUNT(mc.cid)
+        FROM {metrocatch_connect_connection} mc
+        LEFT JOIN {metrocatch_connect_connection} mc2 ON (mc2.uid_to = mc.uid_to AND mc2.uid_from = mc.uid_from) OR (mc2.uid_from = mc.uid_to AND mc2.uid_to = mc.uid_from)
+        WHERE mc2.cid != mc.cid AND mc.type IN ('temporary', 'request_permanent', 'permanent') AND mc2.type IN ('temporary', 'request_permanent', 'permanent')",
+      'test_type' => 'negative',
+      'error_list_query' =>
+        "SELECT mc.cid
+        FROM {metrocatch_connect_connection} mc
+        LEFT JOIN {metrocatch_connect_connection} mc2 ON (mc2.uid_to = mc.uid_to AND mc2.uid_from = mc.uid_from) OR (mc2.uid_from = mc.uid_to AND mc2.uid_to = mc.uid_from)
+        WHERE mc2.cid != mc.cid AND mc.type IN ('temporary', 'request_permanent', 'permanent') AND mc2.type IN ('temporary', 'request_permanent', 'permanent')",
+      'error_list_description' => 'Duplicate connections IDs: @list',
+    ),
+    'metrocatch_connect.catches_right_values' => array(
+      'title' => t('Wrong values in catch of the day (sub)feature records.'),
+      'description' => t('Check if any catch of the day record has wrong type/sex/sex preference values.'),
+      'table' => 'metrocatch_connect_catches',
+      'severity' => 'warning',
+      'test_query' =>
+        "SELECT COUNT(mcc.fid)
+        FROM {metrocatch_connect_catches} mcc
+        WHERE mcc.type NOT IN('feature', 'subfeature') OR mcc.sex NOT IN ('man', 'woman') OR mcc.sex_preference NOT IN ('men', 'women')",
+      'test_type' => 'negative',
+      'error_list_query' =>
+        "SELECT mcc.fid
+        FROM {metrocatch_connect_catches} mcc
+        WHERE mcc.type NOT IN('feature', 'subfeature') OR mcc.sex NOT IN ('man', 'woman') OR mcc.sex_preference NOT IN ('men', 'women')",
+      'error_list_description' => 'Rows with wrong type/sex/sex preference values: @list',
+      'fixes' => array(
+        'metrocatch_connect_delete_wrong_catches' => array(
+          'description' => t('Delete all rows with the wrong values.'),
+          'query' => "
+            DELETE mcc FROM {metrocatch_connect_catches} mcc
+            WHERE mcc.type NOT IN('feature', 'subfeature') OR mcc.sex NOT IN ('man', 'woman') OR mcc.sex_preference NOT IN ('men', 'women')",
+        ),
+      ),
+    ),
+    'metrocatch_connect.connections_left_positive' => array(
+      'title' => t('The number of connections left is positive'),
+      'description' => t('Checks if there are users who have number of connections left.'),
+      'table' => 'content_type_profile',
+      'severity' => 'error',
+      'test_query' => "SELECT 1 FROM {content_type_profile} WHERE field_profile_connections_left_value < 0",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT nid FROM {content_type_profile} WHERE field_profile_connections_left_value < 0",
+      'error_list_description' => 'Profile IDs of users who have negative number of connections left: @list',
+      'fixes' => array(
+        'metrocatch_connect_conntections_left_positive_fix' => array(
+          'description' => t('Set the number of connections left to 0'),
+          'query' => "UPDATE {content_type_profile} SET field_profile_connections_left_value = 0 WHERE field_profile_connections_left_value < 0",
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_metrocatch_connect_api().
+ */
+function metrocatch_connect_metrocatch_connect_api($op, &$connection) {
+  switch ($op) {
+    case 'presave':
+      // If requester is not featured
+      // then reduce the number of his connections left.
+      // Temporary removed connections decrease (because connects are free now).
+//       if (!metrocatch_connect_user_is_feature_affected($connection['uid_from'])) {
+//          metrocatch_connect_change_connections_number($connection['uid_from'], -1);
+//          $connection['data']['connection_spent'] = TRUE;
+//       }
+      break;
+    case 'update':
+      // If user has declined connection request
+      // or if he did not confirm it in time
+      // then increment the number of connections of an initial user
+      // (which has asked for connection).
+      if ($connection['type'] == 'denied' || ($connection['type'] == 'expired' && $connection['original']['type'] == 'pending')) {
+        // If requester has spent connection and the requestee has denied his connection
+        // then increment requester's connection number.
+        // Temporary remove connections refund (because connections are free now).
+        // if (!empty($connection['data']['connection_spent'])) {
+          // metrocatch_connect_change_connections_number($connection['uid_from'], 1);
+        // }
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_views_api().
+ */
+function metrocatch_connect_views_api() {
+  return array(
+    'api' => 2.0,
+    'path' => drupal_get_path('module', 'metrocatch_connect'),
+  );
+}
+
+/**
+ * @} End of "name hooks".
+ */
+
+/**
+ * @name api API implementations.
+ * @{
+ */
+
+/**
+ * Invokes metrocatch_connect_api hook.
+ *
+ * We pass connection array by reference in order to allow other modules
+ * to alter connection before inserting into database.
+ */
+function metrocatch_connect_invoke($op, &$connection) {
+  foreach (module_implements('metrocatch_connect_api') as $name) {
+    $function = $name .'_metrocatch_connect_api';
+    $function($op, $connection);
+  }
+}
+
+/**
+ * Get count of catch features of selected type, planned for given date
+ *
+ * @param string $date
+ *   catch date
+ * @param string $sex
+ *   user's sex
+ * @param string $sex_preference
+ *   user's sex preference
+ * @param string $type
+ *   catch type (feature or subfeature)
+ *
+ * @return int
+ *   feature count
+ */
+function metrotach_connect_get_catch_feature_count($date, $sex, $sex_preference, $type) {
+  return db_result(db_query("SELECT COUNT(*) FROM {metrocatch_connect_catches} WHERE sex='%s' AND sex_preference='%s' AND type='%s' AND date='%s'", $sex, $sex_preference, $type, $date));
+}
+
+/**
+ * Get user feature on given date
+ *
+ * @param int $uid
+ *   user id
+ * @param string $date
+ *   date for find features on
+ *
+ * @return object
+ *   user feature or FALSE
+ */
+function metrocatch_connect_get_user_feature($uid, $date) {
+  return db_fetch_object(db_query("SELECT * FROM {metrocatch_connect_catches} WHERE uid=%d AND date='%s'", $uid, $date));
+}
+
+/**
+ * Set code of the last error
+ *
+ * @param int $error_number
+ */
+function metrocatch_connect_set_last_error($error_number = NULL) {
+  static $last_error = 0;
+  if ($error_number !== NULL) {
+    $last_error = $error_number;
+    return $last_error;
+  }
+  if ($last_error === 0) {
+    return NULL;
+  }
+  return $last_error;
+}
+
+function metrocatch_connect_init() {
+  global $user;
+  $profile = metrocatch_profile_get_profile($user->uid);
+}
+
+/**
+ * Get text of last error, occured in the connects logic
+ *
+ * @return string
+ *   error desctiption or NULL
+ */
+function metrocatch_connect_get_last_error() {
+  $error_code = metrocatch_connect_set_last_error();
+  global $_metrocatch_connect_error_messages;
+  if ($error_code && isset($_metrocatch_connect_error_messages[$error_code])) {
+    return t($_metrocatch_connect_error_messages[$error_code]);
+  }
+  return NULL;
+}
+
+/**
+ * Get expiration of the longest user's feature (at this moment)
+ *
+ * @param int $uid
+ *   user id
+ * @return int
+ *   timestamp
+ */
+function metrocatch_connect_get_longest_feature_expiration($uid) {
+  if ($catch = metrocatch_connect_get_user_catch($uid)) {
+    return $catch->expire;
+  }
+  return FALSE;
+}
+
+/**
+ * Checks if user is feature-affected (was featured 15 or 30 days ago).
+ *
+ * @param int $uid
+ *   The user UID
+ *
+ * @return
+ *   TRUE if user is featured FALSE otherwise.
+ */
+function metrocatch_connect_user_is_feature_affected($uid) {
+  $catch = metrocatch_connect_load_features()->types('feature', 'subfeature')
+    ->active()
+    ->uid($uid)
+    ->limit(1)
+    ->fetchSingle();
+  return ($catch !== FALSE);
+}
+
+/**
+ * Get the list of active features.
+ *
+ * For each user it gets the latest active feature.
+ *
+ * @return
+ *   An array of UIDs of featured users.array
+ *
+ * @see metrocatch_connect_node_grants()
+ */
+function metrocatch_connect_get_featured_uids() {
+  $catches = metrocatch_connect_load_features()->types('feature', 'subfeature')
+    ->active()
+    ->fetchAll();
+  return array_keys($catches);
+}
+
+/**
+ * Get an instance of the MetrocatchConnectFeaturesLoader class.
+ */
+function metrocatch_connect_load_features() {
+  module_load_include('inc', 'metrocatch_connect', 'MetrocatchConnectFeaturesLoader');
+  $feature_duration = ceil(variable_get('metrocatch_connect_feature_duration', 2592000) / 86400) - 1;
+  $subfeature_duration = ceil(variable_get('metrocatch_connect_subfeature_duration', 1296000) / 86400) - 1;
+  return new MetrocatchConnectFeaturesLoader($feature_duration, $subfeature_duration);
+}
+
+/**
+ * Loads user's catch.
+ *
+ * First of all we try to load user's Catch of the Day Feature.
+ * If no user's feature is available, we try to load his Sub-Feature.
+ * If no Sub-Feature is available, return FALSE.
+ *
+ * @param $uid
+ *   The UID of the user whose catch to load.
+ * @param $sex
+ *   (optional) Check if user is featured in a given segment.
+ * @param $preference
+ *   (optional) Check if user is featured in a given segment.
+ *
+ * @return
+ *   stdClass object of fully-loaded user's catch on success,
+ *   FALSE otherwise.
+ */
+function metrocatch_connect_get_user_catch($uid, $sex = NULL, $preference = NULL) {
+  return $catch = metrocatch_connect_load_features()->types('feature', 'subfeature')
+    ->active()
+    ->uid($uid)
+    ->segment($sex, $preference)
+    ->limit(1)
+    ->fetchSingle();
+}
+
+/**
+ * Create new "catch of the day" record.
+ *
+ * @param array $data array with following keys: date, type, sex, sex_preferences, uid
+ */
+function metrocatch_connect_create_catch_feature($data) {
+  $now = time();
+  // @TODO: remove it:
+  if (FALSE && strtotime($data['date']) < $now) {
+    return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_INVALID_DATE);
+  }
+  if (!user_load($data['uid'])) {
+    return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_INVALID_UID);
+  }
+  $count = metrotach_connect_get_catch_feature_count($data['date'], $data['sex'], $data['sex_preference'], $data['type']);
+  if ($data['type'] == METROCATCH_CATCH_TYPE_FEATURE) {
+    if ($count > 0) {
+      return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_BUSY_DAY);
+    }
+  }
+  else { // METROCATCH_CATCH_TYPE_SUBFEATURE
+    if ($count > 2) {
+      return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_BUSY_DAY);
+    }
+  }
+  // user alredy has feeature on this day
+  if (metrocatch_connect_get_user_feature($data['uid'], $data['date'])) {
+    return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_ALREADY_FEATURED);
+  }
+  // format date
+  $data['date'] = date('Y-m-d', strtotime($data['date']));
+  drupal_write_record('metrocatch_connect_catches', $data);
+  return metrocatch_connect_set_last_error(0);
+}
+
+/**
+ * Save connection in database. It can create new connection or update existing one.
+ * In last case the connection array must contain 'cid' key with it's primary identificator.
+ *
+ * @param array $connection
+ *   An associative array with following keys:
+ *  - uid_from: (optional) Integer UID of user who initiates this connection.
+ *    If not present it will be a current user UID.
+ *  - uid_to: Integer UID of user who receives the invintation.
+ *  - status: (optional) String status of this connection.
+ *    Default: "pending". See constants section for possible values.
+ *  - type: (optional) String type of this connection.
+ *    Default: "temp". See constants section for possible values.
+ *  - created: (optional) An Integer timestamp of when this connection was initiated.
+ *    Default: current timestamp.
+ *  - data: (optional) An associative array of additional data about this connection.
+ *    Default: NULL.
+ *
+ * @return
+ *   An array of $connection with primary identifier $connection['cid'] on success, FALSE otherwise.
+ *   If this is updating of existing connection, the result array
+ *   will also contain a $connection['original'] object with an original connection state.
+ */
+function metrocatch_connect_save_connection($connection) {
+  // update an existing connection:
+  if (isset($connection['cid'])) {
+    $op = 'update';
+    $connection['original'] = metrocatch_connect_connection_load($connection['cid']);
+    if ($connection['type'] != 'expired') {
+      $connection['data']['requester'] = $connection['requester'];
+      $connection['data']['requestee'] = ($connection['data']['requester'] == $connection['uid_to'] ? $connection['uid_from'] : $connection['uid_to']);
+    }
+    $connection['data']['history'][] = $connection['original'];
+    $possible_transitions = metrocatch_connect_get_possible_state_transitions();
+    // Watchdog invalid state transitions:
+    if (!isset($possible_transitions[$connection['original']['type']][$connection['type']])) {
+      watchdog('metrocatch_connect', 'Invalid connection type for connection %cid', array('%cid' => $connection['cid']), WATCHDOG_ERROR);
+    }
+    drupal_write_record('metrocatch_connect_connection', $connection, array('cid'));
+  }
+  // create new one:
+  else {
+    $op = 'insert';
+    $connection += array(
+      'type' => 'pending',
+      'created' => time(),
+      'data' => array(),
+      // Get the minimal expiration time:
+      // If user's feature expires earlier than in 3 days, it will be the expiration time.
+      'expiration_time' => (time() + variable_get('metrocatch_connect_days_to_approve_connection', 3) * 86400),
+    );
+    $connection['data'] += array(
+      'requestee' => $connection['uid_to'],
+      'requester' => $connection['uid_from'],
+      'history' => array(),
+    );
+    metrocatch_connect_invoke('presave', $connection);
+    drupal_write_record('metrocatch_connect_connection', $connection);
+  }
+  if (!isset($connection['account_from'])) {
+    $connection['account_from'] = user_load($connection['uid_from']);
+  }
+  if (!isset($connection['account_to'])) {
+    $connection['account_to'] = user_load($connection['uid_to']);
+  }
+  metrocatch_connect_invoke($op, $connection);
+  return $connection;
+}
+
+/**
+ * Loads connection from database.
+ *
+ * @param $cid
+ *   The primary identificator of a connection.
+ */
+function metrocatch_connect_connection_load($cid) {
+  if ($connection = db_fetch_array(db_query('SELECT * FROM {metrocatch_connect_connection} WHERE cid = %d', $cid))) {
+    return _metrocatch_connect_prepare_connection($connection);
+  }
+  return FALSE;
+}
+
+/**
+ * Loads user connections from database.
+ *
+ * @param $uid
+ *   The UID of the user whose connections we need to load.
+ * @param $types
+ *   An array of connection types
+ *
+ * @return
+ *   An associative array with connection IDs in keys
+ *   and arrays representing fully-loaded connections in values.
+ */
+function metrocatch_connect_load_user_connections($uid, $types = array()) {
+  static $cache;
+  if (empty($types)) {
+    $types = metrocatch_connect_get_active_connection_types();
+  }
+  ksort($types);
+  $cid = implode('.', $types) .'.'. $uid;
+  if (!isset($cache[$cid])) {
+    $connections = array();
+    $args = array_merge(array($uid, $uid), $types);
+    $result = db_query('SELECT * FROM {metrocatch_connect_connection} WHERE (uid_to = %d OR uid_from = %d) AND type IN ('. db_placeholders($types, 'varchar') . ')', $args);
+    while ($connection = db_fetch_array($result)) {
+      $connections[$connection['cid']] = _metrocatch_connect_prepare_connection($connection, $uid);
+    }
+    $cache[$cid] = $connections;
+  }
+  return $cache[$cid];
+}
+
+/**
+ * Loads UIDs of user connections from database.
+ *
+ * @param $uid
+ *   The UID of the user whose connections we need to load.
+ * @param $types
+ *   An array of connection types
+ *
+ * @return
+ *   An associative array with connection IDs in keys and user UIDs of connected users in values.
+ */
+function metrocatch_connect_load_user_connection_uids($uid, $types = array()) {
+  static $cache;
+  if (empty($types)) {
+    $types = metrocatch_connect_get_active_connection_types();
+  }
+  ksort($types);
+  $cid = implode('.', $types) .'.'. $uid;
+  if (!isset($cache[$cid])) {
+    $connections = array();
+    $args = array_merge(array($uid, $uid), $types);
+    $result = db_query('SELECT cid, uid_to, uid_from FROM {metrocatch_connect_connection} WHERE (uid_to = %d OR uid_from = %d) AND type IN ('. db_placeholders($types, 'varchar') . ')', $args);
+    while ($connection = db_fetch_array($result)) {
+      $connections[$connection['cid']] = ($connection['uid_to'] == $uid ? $connection['uid_from'] : $connection['uid_to']);
+    }
+    $cache[$cid] = $connections;
+  }
+  return $cache[$cid];
+}
+
+/**
+ * Load connection between users.
+ *
+ * @param $uid_from
+ *   First user's UID.
+ * @param $uid_to
+ *   UID of second user.
+ * @param $type
+ *   Connection type.
+ *
+ * @return
+ *   An array with fully-loaded connection on success, FALSE otherwise.
+ */
+function metrocatch_connect_load_users_connection($uid_from, $uid_to, $type) {
+  $connection = db_fetch_array(db_query("SELECT * FROM {metrocatch_connect_connection} WHERE ((uid_to = %d AND uid_from = %d) OR (uid_to = %d AND uid_from = %d)) AND type = '%s'", $uid_from, $uid_to, $uid_to, $uid_from, $type));
+  if ($connection !== FALSE) {
+    return _metrocatch_connect_prepare_connection($connection, $uid_from);
+  }
+  return FALSE;
+}
+
+/**
+ * Counts user connections of specified types.
+ *
+ * @param $uid
+ *   The UID of the user whose connections to count.
+ * @param $types
+ *   (optional) An array of connection types to count.
+ *   Default is active connection types.
+ */
+function metrocatch_connect_count_connections($uid, $types = array()) {
+  if (empty($types)) {
+    $types = metrocatch_connect_get_active_connection_types();
+  }
+  $args = array_merge(array($uid, $uid), $types);
+  return db_result(db_query('SELECT COUNT(cid) FROM {metrocatch_connect_connection} WHERE (uid_to = %d OR uid_from = %d) AND type IN ('. db_placeholders($types, 'varchar') . ')', $args));
+}
+
+/**
+ * Prepares connection after loading from database.
+ */
+function _metrocatch_connect_prepare_connection($connection, $uid = NULL) {
+  if ($uid) {
+    $connection['connector'] = ($connection['uid_to'] == $uid ? $connection['uid_from'] : $connection['uid_to']);
+  }
+  $connection['data'] = unserialize($connection['data']);
+  $connection['account_to'] = user_load($connection['uid_to']);
+  $connection['account_from'] = user_load($connection['uid_from']);
+  return $connection;
+}
+
+/**
+ * Prepares Catch after loading from database.
+ */
+function metrocatch_connect_prepare_catch($catch) {
+  $catch->account = user_load($catch->uid);
+  $catch->date = strtotime($catch->date);
+  $catch->account->path = 'catches/catch/'. $catch->account->uid;
+  switch ($catch->type) {
+    case 'feature':
+      $catch->expire = $catch->date + variable_get('metrocatch_connect_feature_duration', 2592000);
+      break;
+    case 'subfeature':
+      $catch->expire = $catch->date + variable_get('metrocatch_connect_subfeature_duration', 1296000);
+      break;
+  }
+  return $catch;
+}
+
+/**
+ * Removes a connection from database.
+ *
+ * @param $connection
+ *   An array represeting removed connection.
+ */
+function metrocatch_connect_remove_connection($connection) {
+  metrocatch_connect_invoke('delete', $connection);
+  db_query('DELETE FROM {metrocatch_connect_connection} WHERE cid = %d', $connection['cid']);
+}
+
+/**
+ * Checks if users are connected.
+ *
+ * @param $uid_to
+ * @param $uid_from
+ * @param $types
+ *   (optional) An array of connection types to check.
+ *
+ * @return
+ *   TRUE if users are connected, FALSE otherwise.
+ */
+function metrocatch_connect_users_are_connected($uid_to, $uid_from, $types = array()) {
+  if (empty($types)) {
+    $types = metrocatch_connect_get_active_connection_types();
+  }
+  $args = array_merge(array($uid_to, $uid_from, $uid_from, $uid_to), $types);
+  return (bool) db_result(db_query(
+    "SELECT 1 FROM {metrocatch_connect_connection}
+    WHERE ((uid_to = %d AND uid_from = %d) OR (uid_to = %d AND uid_from = %d))
+    AND type IN(" . db_placeholders($types, 'varchar') . ")", $args));
+}
+
+/**
+ * Get an associative array of possible connection type transitions.
+ *
+ * @return
+ *   An associative array with initial connection types in keys
+ *   and associative array of possible transitions for this type in values.
+ *   Each transition may contain following keys:
+ *   - access callback: A function called to check if a given user can make this transition.
+ *   - link: Text of action link.
+ *   - link callback: Function called with connection param to get link text. Is used only if
+ *     a 'link' key is not provided.
+ *   - question: Question in the confirmation form.
+ *   - yes: Text of yes-button in the confirmation form.
+ *   - no: Text of no-button in the confirmation form.
+ *   - message: The message displayed when user submits the confirmation form.
+ *   - error: If user has already performed this transition this text will be displayed in error message.
+ *   - weight: Optional weight for action links sorting.
+ */
+function metrocatch_connect_get_possible_state_transitions() {
+  return array(
+    'pending' => array(
+      // Deny an initialization request.
+      'denied' => array(
+        'link' => t('Deny connection'),
+        'question' => t('Are you sure you want to deny this connection?'),
+        'yes' => t('Deny connection'),
+        'message' => t('Connection was denied.'),
+        'error' => t('You have already denied this connection.'),
+        'access callback' => 'metrocatch_connect_approve_connection_request_access',
+        'weight' => 5,
+      ),
+      // Approve an initialization request:
+//       'temporary' => array(
+//         'link callback' => 'metrocatch_connect_accept_temporary_link',
+//         'question' => t('Are you sure you want to accept this connection?'),
+//         'yes' => t('Accept connection'),
+//         'message' => t('The connection was initialized.'),
+//         'error' => t('You have already approved this connection.'),
+//         'access callback' => 'metrocatch_connect_approve_connection_request_access',
+//         'weight' => -1,
+//       ),
+      'permanent' => array(
+        'link callback' => 'metrocatch_connect_accept_permanent_link',
+        'question' => t('Are you sure you want to accept this connection?'),
+        'yes' => t('Accept connection'),
+        'message' => t('Connection initialized.'),
+        'error' => t('You have already accepted this connection'),
+        'access callback' => 'metrocatch_connect_approve_connection_request_access',
+        'weight' => -1,
+      ),
+    ),
+    'temporary' => array(
+      'expired' => array(
+        'access callback' => FALSE, // Users can't manually expire a connection.
+      ),
+      // Break an existing connection:
+      'cancelled' => array(
+        'link' => t('Break connection'),
+        'question' => t('Are you sure you want to break this connection?'),
+        'yes' => t('Break connection'),
+        'message' => t('Connection was cancelled.'),
+        'error' => t('This connection is already cancelled.'),
+        'access callback' => 'metrocatch_connect_change_connection_type_access',
+        'weight' => 5,
+      ),
+      // Request a permanent connection:
+      'request_permanent' => array(
+        'link callback' => 'metrocatch_connect_make_permanent_link',
+        'question' =>  t('Are you sure you want to make this connection permanent?'),
+        'yes' => t('Request permanent'),
+        'message' => t('You have requested a permanent connection.'),
+        'error' => t('You have already sent request to make this connection permanent.'),
+        'access callback' => 'metrocatch_connect_change_connection_type_access',
+        'weight' => -1,
+      ),
+    ),
+    'request_permanent' => array(
+      'expired' => array(
+        'access callback' => FALSE, // Users can't manually make this transition.
+      ),
+      // Break an existing connection:
+      'cancelled' => array(
+        'link' => t('Break connection'),
+        'question' => t('Are you sure you want to break this connection?'),
+        'yes' => t('Break connection'),
+        'message' => t('Connection was cancelled.'),
+        'error' => t('This connection is already cancelled.'),
+        'access callback' => 'metrocatch_connect_change_connection_type_access',
+        'weight' => 5,
+      ),
+      // Deny permanent request:
+      'temporary' => array(
+        'link' => t('Deny permanent'),
+        'question' => t('Are you sure you want to keep this connection temporary?'),
+        'yes' => t('Leave connection temporary'),
+        'message' => t('Connection remains temporary.'),
+        'error' => t('You have already denied permanent request for this connection.'),
+        'access callback' => 'metrocatch_connect_approve_connection_request_access',
+        'weight' => 0,
+      ),
+      // Approve permanent request:
+      'permanent' => array(
+        'link callback' => 'metrocatch_connect_accept_permanent_link',
+        'question' => t('Are you sure you want to make this connection permanent?'),
+        'yes' => t('Make connection permanent'),
+        'message' => t('Connection became permanent.'),
+        'error' => t('You have already approved permanent request for this connection'),
+        'access callback' => 'metrocatch_connect_approve_connection_request_access',
+        'weight' => -1,
+      ),
+    ),
+    // Permanent connection can only become broken:
+    'permanent' => array(
+      'cancelled' => array(
+        'link' => t('Break connection'),
+        'question' => t('Are you sure you want to break this connection?'),
+        'yes' => t('Break connection'),
+        'message' => t('Connection was denied.'),
+        'error' => t('You have already cancelled this connection.'),
+        'access callback' => 'metrocatch_connect_change_connection_type_access',
+        'weight' => 5,
+      ),
+    ),
+  );
+}
+
+/**
+ * Get transition array
+ *
+ * Returns an array of provided transition.
+ *
+ * @param $old_type
+ * @param $new_type
+ */
+function metrocatch_connect_get_connection_transition($old_type, $new_type) {
+  $transitions = metrocatch_connect_get_possible_state_transitions();
+  return $transitions[$old_type][$new_type];
+}
+
+/**
+ * Get a connection transition link.
+ *
+ * Here we also check if current user can make a given transition.
+ *
+ * @param $connection
+ *   An array of fully-loaded connection.
+ * @param $new_state
+ *   New connection state.
+ * @param $account
+ *   (optional) A user account who s gonna mke this transition.
+ *   Default is current logged in user.
+ * @param $options
+ *   (optional) An array of additional options for l() function.
+ * @param $static_text
+ *   (optional) Boolean flag indicating whether do not add '@days left' suffix for a link
+ *   (e.g. link is displayed in metromail).
+ */
+function metrocatch_connect_get_connection_transition_link($connection, $new_state, $account = NULL, $options = array(), $static_text = FALSE) {
+  if (empty($account)) {
+    global $user;
+    $account = $user;
+  }
+  $transition = metrocatch_connect_get_connection_transition($connection['type'], $new_state);
+  if (metrocatch_connect_connection_transition_access($connection, $new_state, $account)) {
+    drupal_add_js(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.js');
+    $link_text = isset($transition['link']) ? $transition['link'] : call_user_func_array($transition['link callback'], array($connection, $static_text));
+    $link_path = 'connections/change_state/'. $connection['cid'] .'/'. $connection['type'] .'/'. $new_state;
+    // Add default link options:
+    $options += array('attributes' => array('class' => 'connection-action'), 'html' => TRUE);
+    return l($link_text, $link_path , $options);
+  }
+  return '';
+}
+
+/**
+ * Get a list of defined connection types.
+ *
+ * @return
+ *   An associatove array with machine-readable names of connection types in keys
+ *   and human-readable names in values.
+ */
+function metrocatch_connect_get_all_connection_types() {
+  $types = array(
+    'pending' => t('Pending'),
+    'denied' => t('Denied'),
+    'temporary' => t('Temporary'),
+    'request_permanent' => t('Request permanent'),
+    'permanent' => t('Permanent'),
+    'cancelled' => t('Cancelled'),
+    'expired' => t('Expired'),
+  );
+  return $types;
+}
+
+/**
+ * Get the connection type human-readable name.
+ *
+ * @param $type
+ *   Machine-readable name of connection type.
+ */
+function metrocatch_connect_get_connection_type_name($type) {
+  $types = metrocatch_connect_get_all_connection_types();
+  return isset($types[$type]) ? $types[$type] : t('Unknown');
+}
+
+/**
+ * Get active connection types.
+ *
+ * Active means that connected users can view each other's profiles, messaging via metromail, etc.
+ *
+ * @return
+ *   An array with machine-readable names of active connection types.
+ */
+function metrocatch_connect_get_active_connection_types() {
+  return array('temporary', 'request_permanent', 'permanent');
+}
+
+/**
+ * Check if user has an access to make a transition.
+ *
+ * @param $connection
+ *   An array with fully-loaded connection to operate with.
+ * @param $new_state
+ *   New state of connection.
+ * @param $account
+ *   (optional) An account of user who wants to change connection state.
+ *   Default is current user.
+ *
+ * @see metrocatch_connect_get_possible_state_transitions()
+ */
+function metrocatch_connect_connection_transition_access($connection, $new_state, $account = NULL) {
+  if (empty($account)) {
+    global $user;
+    $account = $user;
+  }
+  $transition = metrocatch_connect_get_connection_transition($connection['type'], $new_state);
+
+  if (isset($transition['access callback']) && function_exists($transition['access callback'])) {
+    return $transition['access callback']($connection, $new_state, $account);
+  }
+  return FALSE;
+}
+
+/**
+ * Get number of user's available connections.
+ *
+ * @param int $uid
+ *   user id
+ *
+ * @return int
+ *   number of connections
+ */
+function metrocatch_connect_get_connections_number($uid) {
+  $profile = metrocatch_profile_get_profile($uid);
+  return $profile->field_profile_connections_left[0]['value'];
+}
+
+/**
+ * Get the text of user's available connections.
+ *
+ * If user is featured
+ * the return infinity sign
+ * otherwise return the number of connections left.
+ *
+ * @param $uid
+ *   The UID of target user.
+ */
+function metrocatch_connect_get_connections_number_text($uid) {
+  return metrocatch_connect_user_is_feature_affected($uid)
+    ? variable_get('metrocatch_connect_connections_inf_sign', '&#8734;')
+    : metrocatch_connect_get_connections_number($uid);
+}
+
+/**
+ * Add on or more connection to user's connections number.
+ *
+ * @param int $uid
+ *   user id
+ *
+ * @param int $number
+ *   number of connections to add/remove. May be positive or negative.
+ */
+function metrocatch_connect_change_connections_number($uid, $number = 1) {
+  $profile = metrocatch_profile_get_profile($uid, '', TRUE);
+  $profile->field_profile_connections_left[0]['value'] += $number;
+  node_save($profile);
+}
+
+/**
+ * Generate a display of a given user's profile.
+ *
+ * @param $op
+ *   Idicating what theming function to use.
+ * @param $account
+ *   StdClass ofbject of user whose profile to display.
+ * @param $data
+ *   (optional) An array of any additional data needed for theming functions.
+ */
+function metrocatch_connect_view_profile($op, $account, $data = array()) {
+  return theme('metrocatch_connect_profile_'. $op, $account, $data);
+}
+
+/**
+ * Add metrocatch share in the appropriate database table.
+ *
+ * It also notifies other modules througn hook_metrocatch_connect_share().
+ *
+ * @param $provider
+ *   A string identifier of the Share target, e.g. 'facebook' or 'twitter'.
+ * @param $account
+ *   StdClass object of a user who is sharing a catch.
+ * @param $catch
+ *   StdClass object of the shared catch account.
+ *
+ * @invokes hook_metrocatch_connect_share()
+ */
+function metrocatch_connect_add_share($provider, $account, $catch) {
+  if (!db_result(db_query("SELECT * FROM {metrocatch_connect_shares} WHERE cid = %d AND uid = %d AND provider = '%s'", $catch->uid, $account->uid, $provider))) {
+    $share = array(
+      'cid' => $catch->uid,
+      'uid' => $account->uid,
+      'provider' => $provider,
+      'timestamp' => time(),
+    );
+    drupal_write_record('metrocatch_connect_shares', $share);
+    module_invoke_all('metrocatch_connect_share', $provider, $account, $catch);
+  }
+}
+
+/**
+ * @} End of "name api".
+ */
+
+/**
+ * @name helper Helper functions.
+ * @{
+ */
+
+/**
+ * Access callback for a connection transition: checks whether user has access to change connection state.
+ *
+ * @param $connection
+ *   An array with fully-loaded connection to operate with.
+ * @param $new_state
+ *   New state of connection.
+ * @param $account
+ *   An account of user who wants to change connection state.
+ *
+ * @see metrocatch_connect_connection_transition_access()
+ */
+function metrocatch_connect_change_connection_type_access($connection, $new_state, $account) {
+  // User is admin or belongs to this connection:
+  return (user_access('administer metrocatch connect') || $account->uid == $connection['uid_from'] || $account->uid == $connection['uid_to']);
+}
+
+/**
+ * Access callback for a connection transition: checks checks whether user has access to approve requests.
+ *
+ * Here we check if user can change connection state and if he is not
+ * a requester (E.g. if user has sent connection request he can't approve it by himself.
+ *
+ * @param $connection
+ *   An array with fully-loaded connection to operate with.
+ * @param $new_state
+ *   New state of connection.
+ * @param $account
+ *   An account of user who wants to approve request.
+ *
+ * @return
+ *   TRUE if user can approve request, FALSE otherwise.
+ *
+ * @see metrocatch_connect_connection_transition_access()
+ */
+function metrocatch_connect_approve_connection_request_access($connection, $new_state, $account) {
+  return $account->uid != $connection['data']['requester'] && metrocatch_connect_change_connection_type_access($connection, $new_state, $account);
+}
+
+/**
+ * Access callback for a user profile page.
+ *
+ * Checks if users are connected or if user views his own profile.
+ * Profiles remain private until a connection is made between a metrocatch and another user.
+ *
+ * @param $account
+ *
+ * @return
+ *   TRUE if current user is admin or if users are connected or if user views his own profile.
+ *   FALSE otherwise.
+ *
+ * @see metrocatch_connect_node_access_records()
+ * @see metrocatch_connect_node_grants()
+ */
+function metrocatch_connect_user_profile_access($account) {
+  static $cache;
+  global $user;
+  if (!isset($cache[$account->path])) {
+    if (user_access('administer metrocatch connect')) {
+      $access = TRUE;
+    }
+    elseif (!empty($account->uid)) {
+      switch ($account->path) {
+        case 'user/'. $account->uid:
+          $profile = metrocatch_profile_get_profile($account->uid);
+          $access = node_access('view', $profile, $user);
+          break;
+        case 'catches/catch/'. $account->uid:
+          // Everyone can view featured users
+          $catch = metrocatch_connect_load_features()->types('feature', 'subfeature')
+            ->active()
+            ->uid($account->uid)
+            ->limit(1)
+            ->fetchSingle();
+          $access = !empty($catch);
+          break;
+        default:
+          $access = FALSE;
+      }
+    }
+    else {
+      $access = FALSE;
+    }
+    $cache[$account->path] = $access;
+  }
+  return $cache[$account->path];
+}
+
+/**
+ * Access callback for a "new connect" page.
+ *
+ * Checks if one user can connect no another:
+ *   1. If user to whom user connects is feature affected.
+ *   2. If users are not connected already.
+ *
+ * @param $from
+ *   An account of user who initiates a connection.
+ * @param $to
+ *   An account of another user.
+ */
+function metrocatch_connect_connect_access($from, $to) {
+  global $user;
+  if (!$from->uid || !$to->uid) {
+    return FALSE;
+  }
+  if (!metrocatch_connect_user_is_feature_affected($to->uid)) {
+    return FALSE;
+  }
+  if (metrocatch_connect_users_are_connected($from->uid, $to->uid)) {
+    return FALSE;
+  }
+  if ($from->uid == $to->uid) {
+    return FALSE;
+  }
+  if ($user->uid != $from->uid && !user_access('administer metrocatch connect')) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ * Access callback for the 'Send message' page.
+ *
+ * Checks whether current user can send Metromail messages to a given user.
+ *
+ * @param $account
+ *   StdClass object representing recipient user.
+ */
+function metrocatch_connect_sendmessage_access($account) {
+  global $user;
+  // One does not simply send message to yourself.
+  if ($user->uid == $account->uid) {
+    return FALSE;
+  }
+  if (user_access('administer metrocatch connect')) {
+    return TRUE;
+  }
+  // Check if user can send messages via metromail and if he is connected with recipient.
+  return ($user->uid && $account->uid && user_access('send messages via metromail') && metrocatch_connect_users_are_connected($user->uid, $account->uid));
+}
+
+/**
+ * Check if users can be connected.
+ *
+ * @param $from
+ *   StdClass object of user who wants to initiate a connection.
+ * @param $to
+ *   StdClass object of target user.
+ *
+ * @see metrocatch_connect_connect_access()
+ */
+function metrocatch_connect_users_can_be_connected($from, $to) {
+  return metrocatch_connect_connect_access($from, $to) && !metrocatch_connect_load_users_connection($from->uid, $to->uid, 'pending');
+}
+
+/**
+ * Access callback for the user connections page.
+ *
+ * Checks if user views his own connection page or has an administrative permissions.
+ *
+ * @param $account
+ *   An account of user whose connections are displayed.
+ */
+function metrocatch_connect_connections_page_access($account) {
+  global $user;
+  return (($user->uid && $user->uid == $account->uid) || user_access('administer metrocatch connect'));
+}
+
+/**
+ * Access callback for the 'Share Catch on Facebook' page.
+ *
+ * Path: metrocatch-connect/share/facebook/%user/%
+ *
+ * Validates given token and checks whether target user is featured.
+ *
+ * @param $account
+ *   StdClass object of user who is being shared.
+ * @param $token
+ *   A string containing session-based token for preventing CSRF attacks.
+ */
+function metrocatch_connect_share_facebook_access($account, $token) {
+  return ($account->uid && drupal_valid_token($token, $account->uid . 'facebook', TRUE) && metrocatch_connect_user_is_feature_affected($account->uid));
+}
+
+
+/**
+ * Access callback for the 'Tweet Catch' page.
+ *
+ * Path: metrocatch-connect/share/twitter/%user/%
+ *
+ * Validates given token and checks whether target user is featured.
+ *
+ * @param $account
+ *   StdClass object of user who is being shared.
+ * @param $token
+ *   A string containing session-based token for preventing CSRF attacks.
+ */
+function metrocatch_connect_share_twitter_access($account, $token) {
+  return ($account->uid && drupal_valid_token($token, $account->uid . 'twitter', TRUE) && metrocatch_connect_user_is_feature_affected($account->uid));
+}
+
+/**
+ * Checks if current user can view provided account's connections.
+ *
+ * @return
+ *   TRUE if user is admin or if user views own profile
+ *   or if number of connection is not private field.
+ */
+function metrocatch_connect_count_connections_access($account) {
+  global $user;
+  if (user_access('administer metrocatch connect') || ($user->uid && $user->uid == $account->uid)) {
+    return TRUE;
+  }
+  $profile = metrocatch_profile_get_profile($account->uid);
+  return (!empty($profile->field_profile_public_connections[0]['value']));
+}
+
+/**
+ * Title callback for the metrocatch of the Day Sub-Feature Page.
+ */
+function metrocatch_connect_catch_subfeature_page_title($catch) {
+  return $catch->account->name;
+}
+
+/**
+ * Title callback for "new connect" page
+ *
+ * @param object $to
+ *   user object to connect to
+ */
+function metrocatch_connect_connect_page_title($to) {
+  return t('Connect to @name', array('@name' => $to->name));
+}
+
+/**
+ * Title callback for the Catch of the Day page.
+ */
+function metrocatch_connect_catch_page_title($account) {
+  return $account->name;
+}
+
+/**
+ * Get new connection link.
+ *
+ * We lookup for pending connection between users.
+ * If it exists we return message for existing pending connection, otherwise return new connection link.
+ *
+ * @param $from
+ * @param $to
+ *
+ * @return
+ *   Error message if there is pending connection between users and $account_from has initialized it,
+ *   Accept and Deny links if there is pending connection and $account_from should approve it,
+ *   New connection link if users can be connected and there is no pending connection between users.
+ */
+function metrocatch_connect_get_new_connection_link($from, $to) {
+  $connect_access = !user_is_logged_in() || metrocatch_connect_connect_access($from, $to);
+  $pending_connection = metrocatch_connect_load_users_connection($from->uid, $to->uid, 'pending');
+  if ($pending_connection) {
+    return theme('metrocatch_connect_pending_connection_exists', $from, $to, $pending_connection);
+  }
+  elseif ($connect_access) {
+    return theme('metrocatch_connect_connect_link', $to);
+  }
+  elseif ($from->uid == $to->uid && isset($_GET['connect'])) {
+    // If anonymous will try to connect with himself, we'll show him login form.
+    // When he logs in we show him error message.
+    jquery_ui_add(array('ui.dialog', 'ui.draggable'));
+    drupal_add_js(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.js');
+    $settings = array(
+      'metrocatch_connect' => array(
+        'show_message' => TRUE,
+        'message' => t('You can\'t connect to yourself.'),
+      ),
+    );
+    drupal_add_js($settings, 'setting');
+  }
+  return '';
+}
+
+/**
+ * Get the text of Make permanent link.
+ *
+ * @param $connection
+ *   An array representing fully-loaded connection.
+ * @param $from_metromail
+ *   (optional) Boolean indicating whether not to add days left number.
+ */
+function metrocatch_connect_make_permanent_link($connection, $static = NULL) {
+  return empty($static)
+    ? _metrocatch_connect_days_left_text($connection['expiration_time'], 'Make Permanent <em>(1 Day Left)</em>', 'Make Permanent <em>(@count Days Left)</em>')
+    : t('Make Permanent');
+}
+
+/**
+ * Get the text of Accept permanent link.
+ *
+ * @param $connection
+ *   An array representing fully-loaded connection.
+ * @param $from_metromail
+ *   (optional) Boolean indicating whether not to add days left number.
+ */
+function metrocatch_connect_accept_permanent_link($connection, $static = NULL) {
+  return empty($static)
+    ? _metrocatch_connect_days_left_text($connection['expiration_time'], 'Accept connection <em>(1 Day Left)</em>', 'Accept connection <em>(@count Days Left)</em>')
+    : t('Accept connection');
+}
+
+/**
+ * Get the text of Accept connection link.
+ *
+ * @param $connection
+ *   An array representing fully-loaded connection.
+ * @param $from_metromail
+ *   (optional) Boolean indicating whether not to add days left number.
+ */
+function metrocatch_connect_accept_temporary_link($connection, $static = NULL) {
+  return empty($static)
+    ? _metrocatch_connect_days_left_text($connection['expiration_time'], 'Accept Connection <em>(1 Day Left)</em>', 'Accept Connection <em>(@count Days Left)</em>')
+    : t('Accept Connection');
+}
+/**
+ * Returns text with days left untill connection will expire.
+ *
+ * @param $expire
+ *   UNIX timestamp of when connection will expire.
+ * @param $singular
+ *   (optional) The string for the singular case.
+ * @param $plural
+ *   (optional) The string for the plural case.
+ */
+function _metrocatch_connect_days_left_text($expire, $singular = '1 Day Left', $plural = '@count Days Left') {
+  $days_left = ceil(($expire - time()) /  86400);
+  $days_left = ($days_left <= 0 ? 0 : $days_left);
+  return format_plural($days_left, $singular, $plural);
+}
+
+/**
+ * Return themed share links.
+ *
+ * @param $account
+ *   StdClass object of user whose profile is displayed.
+ */
+function metrocatch_content_share_profile_links($account) {
+  drupal_add_js(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.js');
+  $facebook_token = drupal_get_token($account->uid .'facebook');
+  $facebook_attributes = array(
+    'title' => t('Share this Catch on Facebook'),
+    'class' => 'catch-share-facebook',
+    'share_url' => url($account->path, array('absolute' => TRUE)),
+    'rel' => 'nofollow',
+  );
+  $twitter_token = drupal_get_token($account->uid .'twitter');
+  $twitter_attributes = array(
+    'title' => t('Tweet this Catch'),
+    'class' => 'twitter-share-button',
+    'share_url' => url($account->path, array('absolute' => TRUE)),
+    'rel' => 'nofollow',
+  );
+  $email_query = array(
+    'url' => url($account->path, array('absolute' => TRUE)),
+  );
+  $email_attributes = array(
+    'title' => t('Email this Catch'),
+    'class' => 'email-share-button',
+    'rel' => 'nofollow',
+  );
+  $links = array(
+    'facebook' => l(t('Share'), 'metrocatch-connect/share/facebook/'. $account->uid .'/'. $facebook_token, array('attributes' => $facebook_attributes)),
+    'twitter' => l(t('Tweet'), 'metrocatch-connect/share/twitter/'. $account->uid .'/'. $twitter_token, array('attributes' => $twitter_attributes)),
+    'email' => l(t('Email'), 'metrocatch-connect/share/email', array('query' => $email_query, 'attributes' => $email_attributes)),
+  );
+  return implode('&nbsp;&nbsp;|&nbsp;&nbsp;', $links);
+}
+
+/**
+ * Adds neccessary variables into profile templates.
+ *
+ * @param $vars
+ *   May contain the following arguments:
+ *   - account: StdClass object of user who is viewing this Catch.
+ *   - catch: (optional) StdClass object representing fully-loaded Catch of the day.
+ */
+function metrocatch_connect_default_profile_template_variables($vars) {
+  global $user;
+  $account = $vars['account'];
+  if (isset($vars['data']['catch'])) {
+    $catch = $vars['data']['catch'];
+//    $share_url = 'catches/'. $catch->sex .'-interested-in-'. $catch->sex_preference .'/'. $catch->uid;
+  }
+  else {
+    $catch = FALSE;
+  }
+  $share_url = $account->path;
+  $attributes = (isset($vars['attributes']) ? $vars['attributes'] : array());
+  $default_variables = array(
+    'username' => (metrocatch_connect_user_profile_access($account) ? l($account->name, $account->path) : check_plain($account->name)),
+    'userpic' => theme('metrocatch_profile_picture', 'userpic_large', $account, $attributes),
+    'baseinfo' => theme('metrocatch_profile_baseinfo', $account->uid),
+    'interest' => metrocatch_profile_get_preference_text($account),
+    'connect' => metrocatch_connect_get_new_connection_link($user, $account),
+    'share' => metrocatch_content_share_profile_links($account),
+  );
+  if (metrocatch_connect_count_connections_access($account)) {
+    $default_variables['count_connections'] = metrocatch_connect_count_connections($account->uid);
+  }
+  if ($catch && (empty($user->uid) || metrocatch_connect_users_can_be_connected($user, $account))) {
+    $default_variables['time_left'] = theme('metrocatch_connect_time_left', $catch, TRUE);
+  }
+  return $default_variables;
+}
+
+/**
+ * Helper function: get user's marketing text.
+ *
+ * @param $trimmed
+ *   (Optional) Boolean indicating whether to trim marketing text.
+ *   Default is FALSE.
+ */
+function metrocatch_connect_get_marketing_text($account, $trim = FALSE) {
+  $profile = metrocatch_profile_get_profile($account->uid);
+  $marketing_text = (isset($profile->field_marketing_text[0]['value']) ? check_markup($profile->field_marketing_text[0]['value']) : '');
+  return (!$trim ? $marketing_text : truncate_utf8($marketing_text, 256, TRUE, TRUE));
+}
+
+/**
+ * Helper function used by usort to sort connection actions.
+ *
+ * @see template_preprocess_metrocatch_connect_connection()
+ */
+function metrocatch_connection_actions_sort($a1, $a2) {
+  if (!isset($a1['weight'])) {
+    $a1['weight'] = 0;
+  }
+  if (!isset($a2['weight'])) {
+    $a2['weight'] = 0;
+  }
+  if ($a1['weight'] == $a2['weight']) {
+    return 0;
+  }
+  return ($a1['weight'] < $a2['weight']) ? -1 : 1;
+}
+
+/**
+ * @} End of "name helper".
+ */
+
+/**
+ * @name theme Theme implementations.
+ * @{
+ */
+
+/**
+ * Returns themed output of multiple connections or empty text if user has no connections yet.
+ */
+function theme_metrocatch_connect_connections_view($connections) {
+  $output = '<div class="connections-wrapper">';
+  $output .= '<div class="group-title">'. t('Connections') .'</div>';
+  $output .= '<div class="connections">';
+  if (!empty($connections)) {
+    $last_key = count($connections) - 1;
+    foreach ($connections as $key => $connection) {
+      $account = user_load($connection['connector']);
+      if ($key == $last_key) {
+        $connection['_last'] = TRUE;
+      }
+      $output .= theme('metrocatch_connect_connection', $account, $connection);
+    }
+  }
+  else {
+    $output .= t('You have no connections yet.');
+  }
+  $output .= '</div>';
+  $output .= '</div>';
+  return $output;
+}
+
+/**
+ * Process variables for metrocatch-connection.tpl.php.
+ *
+ * @param $vars
+ *   An associative array containing:
+ *   - account: The object of the user who is connected to user which views
+ *     this connection.
+ *   - connection: An array of fully-loaded connection to display.
+ */
+function template_preprocess_metrocatch_connect_connection(&$vars) {
+  global $user;
+  $account = $vars['account'];
+  $connection = $vars['connection'];
+  $actions = array();
+  $transitions = metrocatch_connect_get_possible_state_transitions();
+  foreach ($transitions[$connection['type']] as $new_state => $transition) {
+    if ($action = metrocatch_connect_get_connection_transition_link($connection, $new_state, $user, array('query' => drupal_get_destination()))) {
+      $actions[] = $action;
+    }
+  }
+  usort($actions, 'metrocatch_connection_actions_sort');
+  $classes = array('connection');
+  if (!empty($connection['_last'])) {
+    $classes[] = 'last';
+  }
+  $vars += array(
+    'userpic'  => theme('metrocatch_profile_picture', 'userpic_small', $account),
+    'username' => theme('username', $account),
+    'fields'   => theme('metrocatch_profile_baseinfo', $account->uid),
+    'actions'  => implode(' | ', $actions),
+    'classes'  => implode(' ', $classes),
+  );
+}
+
+/**
+ * Theme function for 'metrocatch_connect_connect_link'
+ * Displays "connect" link
+ *
+ * @param int $to
+ *   uid of the user to connect to
+ * @param bool $absolute
+ *   Boolean indicating whether link should be absolute.
+ */
+function theme_metrocatch_connect_connect_link($to, $absolute = FALSE) {
+  static $js_added;
+  global $user;
+  if (!isset($js_added)) {
+    popup_forms_parent_js();
+    drupal_add_js(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.js');
+    $settings = array(
+      'metrocatch_connect' => array(
+        'uid_from' => $user->uid,
+        'uid_to' => (isset($_GET['connect']) ? $_GET['connect'] : $to->uid),
+        // When user logs in we show dialog with connect form.
+        'show_form' => isset($_GET['connect']),
+      ),
+    );
+    drupal_add_js($settings, 'setting');
+    $js_added = TRUE;
+  }
+  return l(t('Connect'), 'connect/new/'. $to->uid, array('attributes' => array('class' => 'metrocatch-connect-link', 'id' => 'metrocatch-connect-to-'. $to->uid), 'absolute' => $absolute));
+}
+
+/**
+ * Returns HTML output of autocomplete field suggestions.
+ *
+ * @see metrocatch_connect_autocomplete()
+ */
+function theme_metrocatch_connect_autocomplete($account) {
+  $userpic = theme('metrocatch_profile_picture', 'userpic_very_small', $account);
+  $username = check_plain($account->name);
+  return '<div class="metrocatch-connect-autocomplete">'. $userpic .'<span>'. $username .'</span>' .'</div>';
+}
+
+/**
+ * Return HTML output of message if there is pending connection between users.
+ *
+ * If user has sent connection request, we show him message that another user is considering his request.
+ * Otherwise current user should confirm or deny this request, so we show him Accept and Deny links.
+ */
+function theme_metrocatch_connect_pending_connection_exists($account_from, $account_to, $connection) {
+  jquery_ui_add(array('ui.dialog', 'ui.draggable'));
+  drupal_add_js(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.js');
+  if ($connection['uid_from'] == $account_from->uid) {
+    $message = t('@username is considering your request<br/> (@left).', array('@username' => $account_to->name, '@left' => _metrocatch_connect_days_left_text($connection['expiration_time'])));
+  }
+  else {
+    $options = array('query' => array('destination' => 'user/'. $account_to->uid));
+    $accept = metrocatch_connect_get_connection_transition_link($connection, 'temporary', $account_from, $options);
+    $deny = metrocatch_connect_get_connection_transition_link($connection, 'denied', $account_from, $options);
+    $message = t("@username has requested connection with you.<br/> !accept or !deny?", array('@username' => $account_to->name, '!accept' => $accept, '!deny' => $deny));
+  }
+  if (isset($_GET['connect'])) {
+    // When anonymous user tries to connect with someone who already has pending connection with,
+    // we show him a jQuery dialog with an appropriate message.
+    $settings = array(
+      'metrocatch_connect' => array(
+        'show_message' => TRUE,
+        'message' => $message,
+      ),
+    );
+  }
+  return '<div id="connection-'. $connection['cid'] .'" class="connection-actions metrocatch-connect-connection-exist">'. $message .'</div>';
+}
+
+/**
+ * Preprocess function for a login form.
+ */
+function template_preprocess_metrocatch_connect_login(&$vars) {
+  $form = $vars['form'];
+  $connect = $form['connect']['#value'];
+  $module_path = drupal_get_path('module', 'metrocatch_connect');
+  drupal_add_css($module_path .'/metrocatch_connect.css');
+  drupal_add_js($module_path .'/metrocatch_connect.js');
+  $vars += array(
+    'login_text' => t('You need to be logged in to make a connection.'),
+    'login_form' => drupal_render($form),
+    'profile_question' => t('Don\'t have an profile?'),
+    'profile_text' => t('It\'s free and only takes a minute.'),
+    'profile_link' => l(t('Create'), 'user/register', array('query' => array('destination' => 'user/'. $connect .'?connect='. $connect), 'attributes' => array('class' => 'close-popup-link'))),
+    'profile_benefits' => t('Benefits include:'),
+    'profile_benefits_list' => t('Making connections for just 99 cents, earning metropoints for free features, receiving our daily email, and more!'),
+  );
+}
+
+
+/**
+ * Preprocess function for user profile.
+ *
+ * Displays a teaser view of user profile.
+ *
+ * @param $vars
+ *   Contains the following arguments:
+ *   - account: StdClass object of user who is viewing this Catch.
+ *   - data: (optional) An array pof optional data.
+ *
+ * @see metrocatch_connect_view_profile()
+ */
+function template_preprocess_metrocatch_connect_profile_teaser(&$vars) {
+  $module_path = drupal_get_path('module', 'metrocatch_connect');
+  drupal_add_css($module_path .'/metrocatch_connect.css');
+  drupal_add_css(drupal_get_path('module', 'metrocatch_profile') .'/metrocatch_profile.css');
+  drupal_add_js($module_path  .'/metrocatch_connect.js');
+  popup_forms_parent_js();
+  $account = $vars['account'];
+  $data = $vars['data'];
+  $vars += metrocatch_connect_default_profile_template_variables($vars);
+  if (!empty($data['show_more_link'])) {
+    $vars['more_link'] = l(t('More'), "user/{$account->uid}/profile");
+  }
+  if (isset($vars['count_connections'])) {
+    $text = format_plural($vars['count_connections'], '1 Connection', '@count Connections');
+    if (!metrocatch_connect_connections_page_access($account)) {
+      $vars['count_connections'] = $text;
+    }
+    else {
+      $vars['count_connections'] = l($text, $account->path .'/connections');
+    }
+  }
+}
+
+/**
+ * Preprocess function for user profile.
+ *
+ * Displays a full view of user profile.
+ *
+ * @param $vars
+ *   Contains the following arguments:
+ *   - account: StdClass object of user who is viewing this Catch.
+ *   - data: (optional) An array pof optional data.
+ *
+ * @see metrocatch_connect_view_profile()
+ */
+function template_preprocess_metrocatch_connect_profile_full(&$vars) {
+  $account = $vars['account'];
+  $vars += array(
+    'teaser' => metrocatch_connect_view_profile('teaser', $account, array('show_more_link' => FALSE)),
+    'moreinfo' => theme('metrocatch_profile_moreinfo', $account->uid),
+  );
+}
+
+/**
+ * Preprocess function for the metrocatch of the Day Feature Landing Page.
+ *
+ * @param $vars
+ *   Contains the following arguments:
+ *   - catch: StdClass object representing fully-loaded Catch of the day.
+ *   - account: StdClass object of user who is viewing this Catch.
+ */
+function template_preprocess_metrocatch_connect_profile_featured(&$vars) {
+  drupal_add_css(drupal_get_path('module', 'metrocatch_profile') .'/metrocatch_profile.css');
+  drupal_add_css(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.css');
+  $account = $vars['account'];
+  $vars += metrocatch_connect_default_profile_template_variables($vars);
+  $vars += array(
+    'userpic' => theme('metrocatch_profile_picture', 'userpic_featured', $account),
+    'moreinfo' => theme('metrocatch_profile_moreinfo', $account->uid),
+    'photos' => t('Photos ( <b>@count</b> )', array('@count' => metrocatch_profile_count_photos($account->uid))),
+    'marketing_text' => metrocatch_connect_get_marketing_text($account),
+  );
+  if (isset($vars['count_connections'])) {
+    $vars['count_connections'] = theme('metrocatch_connect_count_connections', $account, $vars['count_connections'], TRUE);
+  }
+}
+
+/**
+ * Preprocess function for the Today's Catch page.
+ */
+function template_preprocess_metrocatch_connect_profile_featured_teaser(&$vars) {
+  drupal_add_css(drupal_get_path('module', 'metrocatch_profile') .'/metrocatch_profile.css');
+  drupal_add_css(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.css');
+  $account = $vars['account'];
+  $catch = $vars['data']['catch'];
+  $vars += metrocatch_connect_default_profile_template_variables($vars);
+  $vars += array(
+    'huge_userpic' => theme('metrocatch_profile_picture', 'userpic_huge', $account, array(), 'large'),
+    'trimmed_marketing_text' => metrocatch_connect_get_marketing_text($account, TRUE),
+    'more_link' => l(t('More'), "catches/catch/{$account->uid}"),
+  );
+  if (isset($vars['count_connections'])) {
+    $vars['count_connections'] = theme('metrocatch_connect_count_connections', $account, $vars['count_connections'], TRUE);
+  }
+}
+
+/**
+ * Preprocess function for the metrocatch of the Day Sub-Feature Landing Page.
+ *
+ * @param $vars
+ *   Contains the following arguments:
+ *   - catch: StdClass object representing fully-loaded Catch of the day.
+ *   - account: StdClass object of user who is viewing this Catch.
+ */
+function template_preprocess_metrocatch_connect_profile_subfeatured(&$vars) {
+  drupal_add_css(drupal_get_path('module', 'metrocatch_profile') .'/metrocatch_profile.css');
+  drupal_add_css(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.css');
+  $account = $vars['account'];
+  $vars += metrocatch_connect_default_profile_template_variables($vars);
+  $vars['huge_userpic'] = theme('metrocatch_profile_picture', 'userpic_huge', $account, array(), 'medium');
+  if (isset($vars['count_connections'])) {
+    $vars['count_connections'] = theme('metrocatch_connect_count_connections', $account, $vars['count_connections']);
+  }
+}
+
+/**
+ * Return themed tabs with names of today's Catches.
+ *
+ * @param $catches
+ *   An array of today's catches
+ * @param $selected_catch
+ *   (Optional) A catch displayed in the Featured slot.
+ *
+ * @see metrocatch_connect_catches()
+ */
+function theme_metrocatch_connect_catches_tabs($catches, $selected_catch = NULL) {
+  $tabs = array();
+  foreach ($catches as $catch) {
+    $link = theme('menu_item_link', array('type' => MENU_IS_LOCAL_TASK, 'title' => $catch->account->name, 'href' => 'catches/catch/'. $catch->uid, ''));
+    $tabs[] = theme('menu_local_task', $link, ($catch->uid == $selected_catch->uid));
+  }
+  return '<div class="tabs todays-catches"><ul class="tabs primary">'. implode(PHP_EOL, $tabs) .'</ul></div>';
+}
+
+/**
+ * Return HTML output of the metrocatch of the Day Sub-Feature Page.
+ *
+ * @param $vars
+ *   An associative array containing:
+ *   - catch: stdClass object of a fully-loaded Catch, or FALSE if there is no
+ *     today's Catch of the Day.
+ *   - other_catches: An array of all the others today's catches in this category.
+ *   - sex: Sex (man or woman). This is used in order to determine
+ *     which segment is displayed.
+ *   - preference: Sexual preference (men or women). This is also used to determine
+ *     which segment is displayed.
+ */
+function template_preprocess_metrocatch_connect_catch_subfeature_page(&$vars) {
+  drupal_add_css(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.css');
+  drupal_add_css(drupal_get_path('module', 'metrocatch_profile') .'/metrocatch_profile.css');
+  drupal_add_js(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.js');
+  $catch = $vars['catch'];
+  $other_catches = $vars['other_catches'];
+  if (!empty($catch->fid)) {
+    $vars['featured_slot'] = metrocatch_connect_view_profile('subfeatured', $catch->account, array('catch' => $catch));
+  }
+  else {
+    // @TODO: Display empty text if no catch is available?
+    $vars['featured_slot_empty_text'] = '';
+  }
+  if (!empty($other_catches)) {
+    $vars['other_catches_block'] = theme('metrocatch_connect_other_catches', $other_catches, 'subfeature', FALSE, 'userpic_other_catches', !empty($vars['close_archive_link']));
+  }
+  else {
+    $vars['other_catches_empty_text'] = t('No catches are available today in selected category.');
+  }
+  $sex_plural = strtr($catch->sex, array('man' => 'men', 'woman' => 'women'));
+  if (empty($vars['archive'])) {
+    $vars['view_archive_link'] = l('<div class="view-all-other-catches">'. t('View the Archive') .'</div>', 'catches/'. $sex_plural .'-interested-in-'. $catch->sex_preference .'/'. $catch->uid .'/archive', array('html' => TRUE, 'attributes' => array('class' => 'metrocatch-toggle-archive')));
+  }
+  if (!empty($vars['close_archive_link'])) {
+    $vars['close_archive_link'] = l('<div class="close-archive-link-wrapper">'. t('Close the Archive') .'</div>', 'catches/'. $sex_plural .'-interested-in-'. $catch->sex_preference .'/'. $catch->uid, array('html' => TRUE, 'attributes' => array('class' => 'metrocatch-toggle-archive')));
+  }
+}
+
+/**
+ * Returns HTML output of the Other Catches block.
+ *
+ * @param $catches
+ *   An array of catches to theme.
+ * @param $type
+ *   Type of themed catches: 'feature' or 'subfeature'. We need it to format catch URL:
+ *   features and subfeatures are displayed on separate pages though sometimes features are
+ *   displayed on subfeatures page.
+ * @param $show_preference
+ *   (optional) Flag whether to display user's sexual preference or not.
+ * @param $imagecache_preset
+ *   (optional) String identifier of Imagecache preset for theming user's picture.
+ */
+function theme_metrocatch_connect_other_catches($catches, $type, $show_preference = FALSE, $imagecache_preset = 'userpic_other_catches', $archive = FALSE) {
+  $output = '<div class="metrocatch-other-catches">';
+  $per_line = variable_get('metrocatch_connect_catches_per_line', 3);
+  $count_rows = 1;
+  $rows = array_chunk($catches, $per_line);
+  foreach ($rows as $row) {
+    $count_cells = 1;
+    $row_classes = array('metrocatch-other-catches-row', 'clearfix');
+    if ($count_rows == 1) {
+      $row_classes[] = 'first';
+    }
+    elseif ($count_rows == count($rows)) {
+      $row_classes[] = 'last';
+    }
+    $row_classes[] = ($count_rows % 2 ? 'odd' : 'even');
+    $output .= '<div class="'. implode(' ', $row_classes) .'">';
+    foreach ($row as $catch) {
+      $cell_classes = array('metrocatch-other-catches-cell');
+      if ($count_cells == 1) {
+        $cell_classes[] = 'first';
+      }
+      elseif ($count_cells == $per_line) {
+        $cell_classes[] = 'last';
+      }
+      $cell_classes[] = ($count_cells % 2 ? 'odd' : 'even');
+      $output .= '<div class="'. implode(' ', $cell_classes) .'">';
+      $sex_plural = strtr($catch->sex, array('man' => 'men', 'woman' => 'women'));
+      $catch->account->path = 'catches/'. $sex_plural .'-interested-in-'. $catch->sex_preference .'/'. $catch->uid;
+      if ($archive) {
+        $catch->account->path .= '/archive';
+      }
+      $output .= theme('metrocatch_connect_catch_preview', $catch, $show_preference, $imagecache_preset);
+      $output .= '</div>';
+      $count_cells++;
+    }
+    $output .= '</div>';
+    $count_rows++;
+  }
+  $output .= '</div>';
+  return $output;
+}
+
+/**
+ * Returns HTML output of a themed Catch preview.
+ *
+ * @param $catch
+ *   StdClass object representing themed Catch.
+ * @param $show_preference
+ *   (optional) Flag whether display user's sexual preference or not.
+ * @param $imagecache_preset
+ *   (optional) String identifier of Imagecache preset to user for theming user's picture.
+ */
+function theme_metrocatch_connect_catch_preview($catch, $show_preference = FALSE, $imagecache_preset = 'userpic_large') {
+  $output = '<div class="catch-preview-wrapper">';
+  if (!empty($show_preference)) {
+    $output .= '<div class="catch-preview-preference">';
+    $output .= metrocatch_profile_get_preference_text($catch->account);
+    $output .= '</div>';
+  }
+  $output .= '<div class="catch-preview-userpic">';
+  $output .= theme('metrocatch_profile_picture', $imagecache_preset, $catch->account);
+  $output .= '</div>';
+  $output .= '<div class="catch-preview-name">';
+  $output .= theme('username', $catch->account);
+  $output .= '</div>';
+  $output .= '</div>';
+  return $output;
+}
+
+/**
+ * Return HTML output of user's connections count.
+ *
+ * @param $account
+ *   StdClass object representing account whose connections count is being displayed.
+ * @param $with_colon
+ *   (optional) Indicating whether to add colon after 'Connections' text.
+ */
+function theme_metrocatch_connect_count_connections($account, $count, $with_colon = FALSE) {
+  $output = '<div class="user-count-connections-label">';
+  $output .= t('Connections');
+  if ($with_colon) {
+    $output .= ':';
+  }
+  $output .= '</div>';
+  $output .= $count;
+  return $output;
+}
+
+/**
+ * Preprocess function for a Random Catch of the Day page.
+ *
+ * @param $vars
+ *   An array containing:
+ *   - catch: Random today's Catch of the Day.
+ *   - today_catches: An array of all today's Featured Catches.
+ *   - other_catches: All the others today's Catches.
+ */
+function template_preprocess_metrocatch_connect_random_catch_page(&$vars) {
+  drupal_add_css(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.css');
+  drupal_add_css(drupal_get_path('module', 'metrocatch_profile') .'/metrocatch_profile.css');
+  drupal_add_js(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.js');
+  $catch = $vars['catch'];
+  $today_catches = $vars['today_catches'];
+  $other_catches = $vars['other_catches'];
+  if (!empty($catch)) {
+    $vars['featured_slot'] = metrocatch_connect_view_profile('featured_teaser', $catch->account, array('catch' => $catch));
+  }
+  else {
+    $vars['featured_slot_empty_text'] = t(variable_get('metrocatch_connect_featured_slot_empty_text', 'No Catches are available today.'));
+  }
+  if (!empty($other_catches)) {
+    $vars['other_catches_block'] = theme('metrocatch_connect_other_catches', $other_catches, 'feature', TRUE);
+  }
+  else {
+    $vars['other_catches_empty_text'] = t('No Catches are available today.');
+  }
+  $vars['catches_tabs'] = theme('metrocatch_connect_catches_tabs', $today_catches, $catch);
+}
+
+/**
+ * Return HTML output of time left to connect.
+ *
+ * @param $catch
+ *   StdClass object representing Catch of the Day.
+ * @param $with_colon
+ *   (optional) Indicator whether to add colon after 'Time left' text.
+ */
+function theme_metrocatch_connect_time_left($catch, $with_colon = FALSE) {
+  $output = '<div class="connect-time-left-label">';
+  $output .= t('Time Left');
+  if ($with_colon) {
+    $output .= ':';
+  }
+  $output .= '</div>';
+  $output .= _metrocatch_connect_days_left_text($catch->expire, '1 Day', '@count Days');
+  return $output;
+}
+
+/**
+ * Overrides default theme('username') callback.
+ *
+ * Here we check if one user can view another user's profile:
+ */
+function theme_metrocatch_connect_username($object) {
+  if ($object->uid && $object->name) {
+    // Shorten the name when it is too long or it will break many tables.
+    if (drupal_strlen($object->name) > 20) {
+      $name = drupal_substr($object->name, 0, 15) .'...';
+    }
+    else {
+      $name = $object->name;
+    }
+    if (metrocatch_connect_user_profile_access($object)) {
+      $options = array('attributes' => array('title' => t('View user profile.')));
+      if (isset($object->path_options)) {
+        $options += $object->path_options;
+      }
+      // User profile can be displayed not only on 'user/%' path.
+      // E.g. Catch profiles are displayed on 'catch/feature/%' or 'catch/subfeature/%' pages.
+      if (!isset($object->path)) {
+        $object->path = "user/$object->uid";
+      }
+      $output = l($name, $object->path, $options);
+    }
+    else {
+      $output = check_plain($name);
+    }
+  }
+  elseif ($object->name) {
+    // Sometimes modules display content composed by people who are
+    // not registered members of the site (e.g. mailing list or news
+    // aggregator modules). This clause enables modules to display
+    // the true author of the content.
+    if (!empty($object->homepage)) {
+      $output = l($object->name, $object->homepage, array('attributes' => array('rel' => 'nofollow')));
+    }
+    else {
+      $output = check_plain($object->name);
+    }
+
+    $output .= ' ('. t('not verified') .')';
+  }
+  else {
+    $output = check_plain(variable_get('anonymous', t('Anonymous')));
+  }
+  return $output;
+}
+
+/**
+ * Additional preprocess function for a themed user picture.
+ *
+ * Here we check if current user can view another user's profile and if so
+ * link a picture on his profile.
+ */
+function metrocatch_connect_preprocess_metrocatch_profile_picture(&$vars) {
+  $account = $vars['account'];
+  if (!empty($vars['link_to_profile']) && !empty($vars['picture']) && !empty($account->uid) && metrocatch_connect_user_profile_access($account)) {
+    $attributes = array_merge(array('attributes' => array('title' => t('View user profile.')), 'html' => TRUE), $vars['attributes']);
+    if (!isset($account->path)) {
+      $account->path = "user/$account->uid";
+    }
+    if (isset($account->path_options)) {
+      $attributes += $account->path_options;
+    }
+    $vars['picture'] = l($vars['picture'], $account->path, $attributes);
+  }
+}
+
+/**
+ * Theme handler for top block on purchase/* pages.
+ *
+ * @param string $text
+ *   text, displayed at the top of the block.
+ */
+function theme_metrocatch_connect_purchase_top_block($text) {
+  $out = '<div class="metrocatch-connect-purchase-text">'. $text .'</div>';
+  if (user_is_anonymous()) {
+    $links = array(
+      l(t('Login'), 'user/login'),
+      l(t('Create a Profile'), 'user/register'),
+    );
+    $out .= theme('item_list', $links);
+  }
+  return $out;
+}
+
+/**
+ * @} End of "name theme".
+ */

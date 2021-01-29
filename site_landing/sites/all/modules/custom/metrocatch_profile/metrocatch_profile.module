@@ -1,0 +1,472 @@
+<?php
+/**
+ * @file
+ * General function and hook implementations
+ */
+
+/**
+ * Module description.
+ *
+ * This module provides next features/functionality:
+ *   - Per-user private fields. Administrator can select checkbox
+ *     "allow user to make this field private" for each CCK field, and after that
+ *     each user can manage visibility of own field for other users
+ *     (used for several profile fields)
+ *   - Hide username from registration form and generate dummy username from email
+ *   - Replace username by firstname on user load
+ */
+
+/**
+ * @name hooks Hook implementations.
+ * @{
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function metrocatch_profile_menu() {
+  return array(
+    'admin/metrocatch' => array(
+      'title' => 'MetroCatch',
+      'description' => "MetroCatch settings.",
+      'position' => 'left',
+      'page callback' => 'system_admin_menu_block_page',
+      'access arguments' => array('administer metrocatch'),
+      'file' => 'system.admin.inc',
+      'file path' => drupal_get_path('module', 'system'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_menu_alter().
+ */
+function metrocatch_profile_menu_alter(&$items) {
+  // create "profile" link
+  $items['profile'] = $items['user'];
+  $items['profile']['menu_name'] = 'primary-links';
+  $items['profile']['access callback'] = 'user_is_logged_in';
+  $items['profile']['title'] = 'Profile';
+  $items['profile']['module'] = 'user';
+  $items['profile']['type'] = MENU_NORMAL_ITEM;
+  return $items;
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function metrocatch_profile_perm() {
+  return array('administer metrocatch');
+}
+
+/**
+ * Imlementation of hook_content_fieldapi().
+ */
+function metrocatch_profile_content_fieldapi($op, $field) {
+  if ($op == 'delete instance') {
+    // delete all records from {metrocatch_profile_field_permissions} table
+    db_query("DELETE FROM {metrocatch_profile_field_permissions} WHERE field_name='%s'", $field['field_name']);
+  }
+}
+
+/**
+ * Implementation of hook_user().
+ */
+function metrocatch_profile_user($op, &$edit, &$account, $category = NULL) {
+  switch ($op) {
+    case 'validate':
+      if(isset($account->metrocatch_profile_realname)) {
+        $edit['name'] = $account->metrocatch_profile_realname;
+      }
+      break;
+    case 'load':
+      $account->metrocatch_profile_realname = $account->name;
+      $account->name = metrocatch_profile_get_user_name($account->uid);
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_field_access().
+ */
+function metrocatch_profile_field_access($op, $field, $account, $node = NULL) {
+  if ($account->uid == 1) {
+    return TRUE;
+  }
+  if (empty($node)) {
+    return TRUE;
+  }
+  if ($account->uid == $node->uid) {
+    // always show field to owner
+    return TRUE;
+  }
+  if ($op == 'view') {
+    return !metrocatch_profile_field_is_private($node->uid, $field['field_name']);
+  }
+  return TRUE;
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function metrocatch_profile_form_alter(&$form, $form_state, $form_id) {
+  if (isset($form['type']) && isset($form['#node']) && $form['type']['#value'] .'_node_form' == $form_id && arg(1) != 'register') {
+    $type = content_types($form['#node']->type);
+    if (!empty($type['fields'])) {
+      $access_settings = variable_get('metrocatch_profile_private_fields', array());
+      foreach ($access_settings as $field_name => $true) {
+        if (isset($form[$field_name])) {
+          global $user;
+          $form[$field_name .'_make_private'] = array(
+            '#type' => 'checkbox',
+            '#title' => t('Make Private'),
+            '#default_value' => isset($form_state['values'][$field_name .'_make_private']) ? $form_state['values'][$field_name .'_make_private'] : metrocatch_profile_field_is_private($user->uid, $field_name),
+            '#weight' => $form[$field_name]['#weight'] + 0.001,
+          );
+        }
+      }
+      if (!is_array($form['buttons']['submit']['#submit'])) {
+        $form['buttons']['submit']['#submit'] = array();
+      }
+      $form['buttons']['submit']['#submit'][] = 'metrocatch_profile_node_form_submit';
+    }
+  }
+  if ($form_id == 'profile_node_form') {
+    $form['title']['#access'] = FALSE;
+  }
+  // customizations of username
+  switch ($form_id) {
+    case 'user_register':
+      if (isset($form['account']) && is_array($form['account'])) {
+        $acc_form = &$form['account'];
+      }
+      else {
+        $acc_form = &$form;
+      }
+      $acc_form['name']['#type'] = 'hidden';
+      $acc_form['name']['#required'] = false;
+      $acc_form['name']['#default_value'] = time();
+      array_unshift($form['#submit'],'metrocatch_profile_registration_form_submit');
+      break;
+    case 'user_profile_form':
+      if (isset($form['account']) && is_array($form['account'])) {
+        $acc_form = &$form['account'];
+      }
+      else {
+        $acc_form = &$form;
+      }
+      $account = &$form['_account']['#value'];
+      $acc_form['name']['#access'] = FALSE;
+      $acc_form['name']['#default_value'] = $account->metrocatch_profile_realname;
+      break;
+    case 'user_login':
+      $form['name']['#title'] = t('E-mail address');
+      $form['name']['#description'] = t('You may login with your e-mail address.');
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter().
+ */
+function metrocatch_profile_form_user_register_alter($form, $form_state) {
+  if (!is_array($form['#after_build'])) {
+    $form['#after_build'] = array();
+  }
+  $form['#after_build'][] = 'metrocatch_profile_registration_form_after_build';
+}
+
+/**
+ * After build callback for the registration form
+ * Hide "title" feld on the profile edit node form
+ */
+function metrocatch_profile_registration_form_after_build($form) {
+  // replace "title" field from form
+  $form['title'] = array(
+    '#type' => 'value',
+    '#value' => 'Profile',
+  );
+  return $form;
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter().
+ */
+function metrocatch_profile_form_content_field_edit_form_alter(&$form, $form_state) {
+  $values = variable_get('metrocatch_profile_private_fields', array());
+  $form['field']['metrocatch_profile_allow_private_field'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Allow user to make this field private.'),
+    '#default_value' => isset($values[$form['#field']['field_name']]) ? 1 : 0,
+  );
+  if (empty($form['#submit'])) {
+    $form['#submit'] = array();
+  }
+  array_unshift($form['#submit'], 'metrocatch_profile_form_content_field_edit_form_submit');
+}
+
+/**
+ * Implementation of hook_db_test().
+ */
+function metrocatch_profile_db_test() {
+  return array(
+    'metrocatch_profile_field_permissions.users_exist' => array(
+      'title' => t('Field permissions for non-existing users'),
+      'description' => t('Check if field permissions belong to nonexistent users.'),
+      'table' => 'metrocatch_profile_field_permissions',
+      'severity' => 'warning',
+      'test_query' => "SELECT COUNT(*) FROM {metrocatch_profile_field_permissions} m LEFT JOIN {users} u ON m.uid = u.uid WHERE u.uid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT CONCAT(m.uid, '-', m.field_name) FROM {metrocatch_profile_field_permissions} m LEFT JOIN {users} u ON m.uid = u.uid WHERE u.uid IS NULL",
+      'error_list_description' => 'Uid-field_name pairs of records with missing users: @list',
+      'fixes' => array(
+        'metrocatch_profile_field_permissions_delete_records' => array(
+          'description' => t('Delete records with missing users.'),
+          'query' => "DELETE m FROM {metrocatch_profile_field_permissions} m LEFT JOIN {users} u ON m.uid = u.uid WHERE u.uid IS NULL",
+        ),
+      ),
+    ),
+    'metrocatch_profile_field_permissions.non_exsting_fields' => array(
+      'title' => t('Field permissions for non-existing fields'),
+      'description' => t('Check if field permissions belong to nonexistent fields.'),
+      'table' => 'metrocatch_profile_field_permissions',
+      'severity' => 'warning',
+      'test_query' => "SELECT COUNT(*) FROM {metrocatch_profile_field_permissions} m LEFT JOIN {content_node_field_instance} c ON c.field_name = m.field_name WHERE c.field_name IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT m.field_name FROM {metrocatch_profile_field_permissions} m LEFT JOIN {content_node_field_instance} c ON c.field_name = m.field_name WHERE c.field_name IS NULL GROUP BY m.field_name",
+      'error_list_description' => 'Field names, that refers to non-existing fields: @list',
+      'fixes' => array(
+        'metrocatch_profile_field_permissions_delete' => array(
+          'description' => t('Delete records with non-existing fields.'),
+          'query' => "DELETE m FROM {metrocatch_profile_field_permissions} m LEFT JOIN {content_node_field_instance} c ON c.field_name = m.field_name WHERE c.field_name IS NULL",
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * @} End of "name hooks".
+ */
+
+/**
+ * @name api API implementations.
+ * @{
+ */
+
+/**
+ * Gets user profile node.
+ *
+ * @param $uid
+ *   The user UID.
+ * @return
+ *   A fully populated profile node object on success, FALSE otherwise.
+ */
+function metrocatch_profile_get_profile($uid) {
+  return content_profile_load('profile', $uid);
+}
+
+/**
+ * Get user name for display on the site (substitution for real username)
+ *
+ * @param int $uid
+ *   user id
+ *
+ * @return string
+ *   substitution for username
+ */
+function metrocatch_profile_get_user_name($uid) {
+  // don't change anonymous username
+  if($uid == 0) {
+    return variable_get('anonymous', 'Anonymous');
+  }
+  // return profile first name as username
+  $value = db_result(
+    db_query(
+      "SELECT field_profile_first_name_value
+      FROM {node} n
+      INNER JOIN {content_type_profile} ctp ON n.vid=ctp.vid
+      WHERE uid=%d AND n.type='profile'",
+      $uid
+    )
+  );
+  if(!$value || $value == '') {
+    // return original username, if no first name found
+    return db_result(db_query("SELECT name FROM {users} WHERE uid=%d", $uid));
+  }
+
+  return $value;
+}
+
+/**
+ * Generate dummy username by email.
+ *
+ * @param string $mail
+ *   user's e-mail
+ * @param int $uid
+ *  user id
+ *
+ * @return string
+ *   generated username
+ */
+function metrocatch_profile_generatename($mail, $uid = null) {
+  $names1 = explode('@', $mail);
+  $names2 = explode('+', $names1[0]);
+  if($names1[1] == 'proxymail.facebook.com' && $names2[0] == 'apps') {
+    $dotElements = explode('.', $names2[1]);
+    $name3 = '_fb_' . $dotElements[1];
+  }
+  else {
+    $name3 = implode(' ', explode('.', $names2[0]));
+  }
+  if(isset($uid)) {
+    $query = db_query("SELECT count(*) FROM {users} WHERE uid <> %d AND LOWER(name) = LOWER('%s')", $uid, $name3);
+  }
+  else {
+    $query = db_query("SELECT count(*) FROM {users} WHERE LOWER(name) = LOWER('%s')", $name3);
+  }
+  if(db_result($query) > 0) {
+    $sql = "SELECT SUBSTRING_INDEX(name,'_',-1) FROM {users} WHERE name REGEXP '%s' ORDER BY CAST(SUBSTRING_INDEX(name,'_',-1) AS UNSIGNED) DESC LIMIT 1";
+    $nameidx = db_result(db_query($sql, '^'. $name3 .'_[0-9]+$'));
+    $name3 .= '_'. ($nameidx + 1);
+  }
+  return $name3;
+}
+
+/**
+ * @} End of "name api".
+ */
+
+/**
+ * @name helper Helper functions.
+ * @{
+ */
+
+/**
+ * Additional submit handler for registration form.
+ * Generate dummy username from e-mail, before user will be created.
+ */
+function metrocatch_profile_registration_form_submit($form, &$form_state) {
+  $form_state['values']['name'] = metrocatch_profile_generatename($form_state['values']['mail']);
+}
+
+/**
+ * Custom submit handler for field settings form.
+ */
+function metrocatch_profile_form_content_field_edit_form_submit($form, $form_state) {
+  $values = variable_get('metrocatch_profile_private_fields', array());
+  $field_name = $form['#field']['field_name'];
+  if (empty($form_state['values']['metrocatch_profile_allow_private_field'])) {
+    unset($values[$field_name]);
+  }
+  else {
+    $values[$field_name] = TRUE;
+  }
+  variable_set('metrocatch_profile_private_fields', $values);
+}
+
+/**
+ * Custom submit handler for node form.
+ * Save per-field access settings
+ */
+function metrocatch_profile_node_form_submit($form, $form_state) {
+  $type = content_types($form['#node']->type);
+  if (!empty($type['fields'])) {
+    $access_settings = variable_get('metrocatch_profile_private_fields', array());
+    global $user;
+    $user_private_fields = metrocatch_profile_get_user_private_fields($user->uid);
+    foreach ($access_settings as $field_name => $true) {
+      if (isset($form[$field_name])) {
+        if ($form_state['values'][$field_name .'_make_private']) {
+          $user_private_fields[$field_name] = 1;
+        }
+        else {
+          unset($user_private_fields[$field_name]);
+        }
+      }
+    }
+    metrocatch_profile_set_user_private_fields($user->uid, $user_private_fields);
+  }
+}
+
+/**
+ * Get array of user's private fields.
+ *
+ * @param $uid
+ *   The user UID whose fields we need to select.
+ *
+ * @return
+ *   An associative array containing field names in keys
+ *   and 0/1 indicating whether field is private in values.
+ */
+function metrocatch_profile_get_user_private_fields($uid) {
+  $fields = array();
+  $rows = db_query("SELECT field_name, access FROM {metrocatch_profile_field_permissions} WHERE uid = %d", $uid);
+  while ($row = db_fetch_object($rows)) {
+    $fields[$row->field_name] = $row->access;
+  }
+  return $fields;
+}
+
+/**
+ * Stores user's private fields in database.
+ *
+ * It also deletes previous records for this user, so only private fields
+ * are stored in {metrocatch_profile_field_permissions} table.
+ *
+ * @param $uid
+ *   The user UID.
+ * @param $user_private_fields
+ *   An associative array containing field names in keys 0/1 indicating in values
+ *   (1 means field is private).
+ */
+function metrocatch_profile_set_user_private_fields($uid, $user_private_fields) {
+  // delete old records
+  db_query("DELETE FROM {metrocatch_profile_field_permissions} WHERE uid = %d", $uid);
+  if (empty($user_private_fields)) {
+    return;
+  }
+  // insert new
+  $query = "INSERT INTO {metrocatch_profile_field_permissions} (uid, field_name, access) VALUES ";
+  $placeholders = array();
+  $args = array();
+  foreach ($user_private_fields as $field_name => $value) {
+    $placeholders[] = "(%d, '%s', %d)";
+    $args[] = $uid;
+    $args[] = $field_name;
+    $args[] = $value;
+  }
+  $query .= implode(',', $placeholders);
+  db_query($query, $args);
+}
+
+/**
+ * Check whether field is private or not.
+ *
+ * @param $uid
+ *   The user UID.
+ * @param $field_name
+ *   A field machine name.
+ *
+ * @return
+ *   TRUE if specified field is private or FALSE otherwise.
+ */
+function metrocatch_profile_field_is_private($uid, $field_name) {
+  static $cache;
+  // fill the cache
+  if (!isset($cache[$uid])) {
+    $rows = db_query("SELECT field_name, access FROM {metrocatch_profile_field_permissions} WHERE uid = %d", $uid);
+    $cache[$uid] = array();
+    while ($row = db_fetch_object($rows)) {
+      $cache[$uid][$row->field_name] = $row->access;
+    }
+  }
+  if (isset($cache[$uid][$field_name]) && $cache[$uid][$field_name] == 1) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * @} End of "name helper".
+ */

@@ -1,0 +1,863 @@
+<?php
+/**
+ * @file
+ * General function and hook implementations
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function metrocatch_custom_menu() {
+  return array(
+    'admin/metrocatch/metropoints' => array(
+      'title' => 'metropoints',
+      'type' => MENU_NORMAL_ITEM,
+      'description' => 'Change settings of redeeming of metropoints for promo-codes.',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_custom_configure_metropoints_form'),
+      'access arguments' => array('configure metropoints redeeming'),
+    ),
+    'redeem-metropoints' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Redeem metropoints',
+      'access callback' => 'user_is_logged_in',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_custom_redeem_points_form'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_menu_alter().
+ */
+function metrocatch_custom_menu_alter(&$items) {
+  // Remove standard '/node' page.
+  unset($items['node']);
+  if (isset($items['admin/build/trigger/metrocatch_custom'])) {
+    $items['admin/build/trigger/metrocatch_custom']['title'] = t('metrocatch');
+  }
+  unset($items['user/%/badges'], $items['user/%/badges/list'], $items['user/%/badges/edit']);
+  // Remove useless tabs from the user profile page.
+  $hidden_tabs = array(
+    'user/%user/connections',
+    'user/%user/profile',
+    'user/%user_category/edit/account',
+    'user/%user/metromail',
+    'user/%user_category/edit',
+    'user/%/purchase-history',
+    'user/login',
+    'user/register',
+    'user/password',
+  );
+  foreach ($hidden_tabs as $tab_path) {
+    if (isset($items[$tab_path])) {
+      $items[$tab_path]['type'] = MENU_NORMAL_ITEM;
+    }
+  }
+  // Show some tabs only for admins.
+  $admin_tabs = array(
+    'user/%/purchase-history',
+  );
+  foreach ($admin_tabs as $tab_path) {
+    if (isset($items[$tab_path])) {
+      $items[$tab_path]['access callback'] = 'user_access';
+      $items[$tab_path]['access arguments'] = array('administer users');
+    }
+  }
+  // Hide all the categories.
+  $empty_account = new stdClass();
+  if (($categories = _user_categories($empty_account)) && (count($categories) > 1)) {
+    foreach ($categories as $key => $category) {
+      if ($category['name'] == 'profile' || $category['name'] == 'account') {
+        continue;
+      }
+      $items['user/%user_category/edit/'. $category['name']]['access callback'] = 'user_access';
+      $items['user/%user_category/edit/'. $category['name']]['access arguments'] = array('administer users');
+    }
+  }
+  // Change registration page title.
+  $items['user/register']['title'] = 'Create a Profile';
+  // Temporary hide 'Purchase connections' menu item.
+  $items['purchase/connections']['access callback'] = FALSE;
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function metrocatch_custom_perm() {
+  return array('configure metropoints redeeming');
+}
+
+/**
+ * Implementation of hook_init().
+ */
+function metrocatch_custom_init() {
+  popup_forms_parent_js();
+  drupal_add_js(drupal_get_path('module', 'metrocatch_custom') .'/metrocatch_custom.js');
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function metrocatch_custom_theme() {
+  return array(
+    'metrocatch_custom_user_badges' => array(
+      'arguments' => array('account' => NULL, 'badges' => array()),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_theme_registry_alter().
+ */
+function metrocatch_custom_theme_registry_alter(&$items) {
+  if (isset($items['user_badge'])) {
+    $items['user_badge']['function'] = 'theme_metrocatch_custom_user_badge';
+  }
+}
+
+/**
+ * Implementation of hook_popup_forms_data().
+ */
+function metrocatch_custom_popup_forms_data() {
+  return array(
+    'metrocatch_custom_subscribe_form' => array(
+      'params' => array('tid' => 1),
+      'close_buttons' => array('op'),
+      'file' => drupal_get_path('module', 'simplenews') .'/includes/simplenews.subscription.inc',
+    ),
+    'metrocatch_custom_redeem_points_form' => array(
+      'close_buttons' => array('ok_button'),
+    ),
+  );
+}
+
+/**
+ * Subscribe form callback
+ */
+function metrocatch_custom_subscribe_form(&$form_state, $tid) {
+  drupal_set_title('Subscribe to metrocatch newsletters.');
+  $form = simplenews_block_form($form_state, $tid);
+  $form['#submit'] = array('simplenews_block_form_submit', 'metrocatch_custom_subscribe_form_submit');
+  $form['#validate'] = array('simplenews_block_form_validate');
+  return $form;
+}
+
+/**
+ * Additional submit handler for subscribtion form
+ */
+function metrocatch_custom_subscribe_form_submit($form, $form_state) {
+  // remove messages, leaved by simplenews module
+  unset($_SESSION['messages']);
+}
+
+/**
+ * Preprocess function for 'page'
+ */
+function metrocatch_custom_preprocess_page(&$vars) {
+  // add "subscribe" link for anonymous users
+  global $user;
+  if (!$user->uid) {
+    if (!is_array($vars['primary_links'])) {
+      $vars['primary_links'] = array();
+    }
+    $vars['primary_links']['subscribe-link'] = array(
+      'fragment' => 'subscribe',
+      'attributes' => array(),
+      'href' => '<front>',
+      'title' => t('Subscribe'),
+    );
+  }
+}
+
+/**
+ * Implementation of hook_metrocatch_product_purchased().
+ */
+function metrocatch_custom_metrocatch_product_purchased($order) {
+  $features_count = db_result(db_query("SELECT COUNT(fid) FROM {metrocatch_connect_catches} WHERE uid=%d AND type='feature'", $order->uid));
+  if ($features_count == 1) {
+    metrocatch_custom_pull_trigger('user_p_first_catch_feature', array('account' => user_load($order->uid)));
+  }
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function metrocatch_custom_form_alter(&$form, &$form_state, $form_id) {
+  switch ($form_id) {
+    case 'user_login':
+      // Add link to the request password page.
+      $form['pass']['#description'] .= ' '. l(t('Forgot your password?'), 'user/password');
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_nodeapi().
+ */
+function metrocatch_custom_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  if ($op == 'update' && $node->type == 'profile') {
+    // Check for full profile
+    $fields = array(
+      'field_profile_favorite_movies',
+      'field_profile_favorite_books',
+      'field_profile_favorite_quotes',
+      'field_profile_favorite_tv_shows',
+      'field_profile_high_scool',
+      'field_profile_college',
+      'field_profile_graduate_school',
+      'field_profile_hometown',
+      'field_profile_state',
+      'field_profile_current_city',
+      'field_profile_neighborhood',
+      'field_profile_employment',
+    );
+    $full = TRUE;
+    foreach ($fields as $field) {
+      if (empty($node->{$field}[0]['value'])) {
+        $full = FALSE;
+        break;
+      }
+    }
+    if ($full) {
+      metrocatch_custom_pull_trigger('user_completed_profile', array('account' => user_load($node->uid)));
+    }
+  }
+}
+
+/**
+ * Implementation of hook_metrocatch_connect_api().
+ */
+function metrocatch_custom_metrocatch_connect_api($op, $connection) {
+  switch ($op) {
+    case 'insert':
+    case 'update':
+      // Get connections number for the both users.
+      $accepted_connections_number = metrocatch_connect_count_connections($connection['uid_from']);
+      foreach (array(50, 25, 10, 4, 1) as $value) {
+        if ($accepted_connections_number == $value) {
+          metrocatch_custom_pull_trigger('user_has_'. $value .'_own_connections', array('account' => user_load($connection['uid_from'])));
+          break;
+        }
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_metrocatch_connect_share().
+ *
+ * @param $provider
+ *   A string identifier of the Share target, e.g. 'facebook' or 'twitter'.
+ * @param $account
+ *   StdClass object of a user who is sharing a catch.
+ * @param $catch
+ *   StdClass object of the shared catch account.
+ */
+function metrocatch_custom_metrocatch_connect_share($provider, $account, $catch) {
+  switch ($provider) {
+    case 'facebook':
+    case 'twiiter':
+      // Get the number of user shares:
+      $user_shares_count = db_result(db_query("SELECT COUNT(DISTINCT(cid)) FROM {metrocatch_connect_shares} WHERE uid = %d GROUP BY uid", $account->uid));
+      switch ($user_shares_count) {
+        case 1:
+        case 5:
+        case 10:
+        case 50:
+          metrocatch_custom_pull_trigger('user_has_shared_'. $user_shares_count .'_catches', array('account' => $account));
+          break;
+      }
+      // Get the number of catch shares:
+      $catch_shares_count = db_result(db_query("SELECT COUNT(DISTINCT(uid)) FROM {metrocatch_connect_shares} WHERE cid = %d GROUP BY cid", $catch->uid));
+      switch ($catch_shares_count) {
+        case 1:
+        case 5:
+        case 10:
+          metrocatch_custom_pull_trigger('user_has_been_shared_'. $catch_shares_count .'_times', array('account' => $catch));
+          break;
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_metrocatch_conversation_feed_added().
+ */
+function metrocatch_custom_metrocatch_conversation_feed_added($feed) {
+  switch ($feed['provider']) {
+    case 'facebook':
+      metrocatch_custom_pull_trigger('user_integrates_facebook', array('account' => user_load($feed['uid'])));
+      break;
+    case 'twitter':
+      metrocatch_custom_pull_trigger('user_integrates_twitter', array('account' => user_load($feed['uid'])));
+      break;
+  }
+}
+
+/**
+ * Add metropoints  to user account.
+ *
+ * @param int $uid
+ *   User id.
+ * @param string $op
+ *   Identifier of performed action
+ * @param int $value
+ *   Amout of poins to add (can be negative).
+ */
+function metrocatch_custom_add_metropoints($uid, $op, $value) {
+  userpoints_userpointsapi(
+    array(
+      'points' => $value,
+      'moderate' => FALSE,
+      'uid' => $uid,
+      'tid' => variable_get('metrocatch_custom_metropoints_tid', 2),
+      'reference' => $op,
+      'display' => FALSE,
+      'entity_id' => $uid,
+      'entity_type' => 'user',
+    )
+  );
+}
+
+/**
+ * Get total value of user's metropoints.
+ *
+ * @param int $uid
+ *   User id.
+ *
+ * @return int
+ *   Points amount.
+ */
+function metrocatch_custom_get_metropoints_amount($uid) {
+  return userpoints_get_current_points($uid, variable_get('metrocatch_custom_metropoints_tid', 2));
+}
+
+/**
+ * Implementation of hook_hook_info().
+ */
+function metrocatch_custom_hook_info() {
+  return array(
+    'metrocatch_custom' => array(
+      'metrocatch_custom' => array(
+        'user_has_1_own_connections' => array(
+          'runs when' => t('User initiates and has 1 connection verified'),
+        ),
+        'user_has_shared_1_catches' => array(
+          'runs when' => t('User shares their first metrocatch on Facebook or Twitter'),
+        ),
+        'user_has_been_shared_1_times' => array(
+          'runs when' => t('User’s metrocatch feature is shared on Facebook or Twitter for the first time'),
+        ),
+        'user_has_shared_5_catches' => array(
+          'runs when' => t('User shares 5 metrocatches on Facebook or Twitter'),
+        ),
+        'user_uploads_5_photos' => array(
+          'runs when' => t('User uploads 5 photos'),
+        ),
+        'user_has_been_shared_5_times' => array(
+          'runs when' => t('User’s metrocatch feature is shared on Facebook or Twitter 5 times'),
+        ),
+        'user_p_first_catch_feature' => array(
+          'runs when' => t('User purchases first metrocatch of the Day feature'),
+        ),
+        'user_has_4_own_connections' => array(
+          'runs when' => t('User initiates and has 4 connections verified'),
+        ),
+        'user_uploads_10_photos' => array(
+          'runs when' => t('User uploads 10 photos'),
+        ),
+        'user_has_been_shared_10_times' => array(
+          'runs when' => t('User’s metrocatch Feature is shared on Facebook or Twitter 10 times'),
+        ),
+        'user_has_shared_10_catches' => array(
+          'runs when' => t('User shares 10 metrocatches on Facebook or Twitter'),
+        ),
+        'user_has_10_own_connections' => array(
+          'runs when' => t('User initiates and has 10 connections verified'),
+        ),
+        'user_integrates_facebook' => array(
+          'runs when' => t('User integrates their profile with Facebook'),
+        ),
+        'user_integrates_twitter' => array(
+          'runs when' => t('User integrates their Conversation with Twitter'),
+        ),
+        'user_completed_profile' => array(
+          'runs when' => t('User completes entire profile'),
+        ),
+        'user_uploads_25_photos' => array(
+          'runs when' => t('User uploads 25 photos'),
+        ),
+        'user_has_shared_25_catches' => array(
+          'runs when' => t('User shares 25 Catches on Facebook or Twitter'),
+        ),
+        'user_has_shared_50_catches' => array(
+          'runs when' => t('User shares 50 Catches on Facebook or Twitter'),
+        ),
+        'user_has_25_own_connections' => array(
+          'runs when' => t('User initiates and has 25 connections verified'),
+        ),
+        'user_has_50_own_connections' => array(
+          'runs when' => t('User initiates and has 50 connections verified'),
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_action_info().
+ */
+function metrocatch_custom_action_info() {
+  return array(
+    'metrocatch_custom_add_badge_and_metropoints_action' => array(
+      'type' => 'user',
+      'description' => t('Add metropoints and badge to user'),
+      'configurable' => TRUE,
+      'hooks' => array('user' => array('any' => TRUE), 'metrocatch_custom' => array('any' => TRUE)),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_metrocatch_custom().
+ */
+function metrocatch_custom_metrocatch_custom($op, $type, $data = array()) {
+  if ($type != 'metrocatch_custom') {
+    return;
+  }
+  $aids = _trigger_get_hook_aids('metrocatch_custom', $op);
+  $context = array(
+    'hook' => 'metrocatch_custom',
+    'op' => $op,
+  );
+  $object = (object) $data;
+  foreach ($aids as $aid => $action_info) {
+    $context['aid'] = $aid;
+    actions_do($aid, $object, $context);
+  }
+}
+
+/**
+ * Pull some metrocatch trigger.
+ *
+ * @param string $trigger
+ *   Trigger name to execute.
+ * @param array $data
+ *   An array of necessary data.
+ */
+function metrocatch_custom_pull_trigger($trigger, $data) {
+  static $triggers_statistic;
+  if (!module_exists('trigger')) {
+    return;
+  }
+  if (isset($data['account'])) {
+    $uid = $data['account']->uid;
+    if (!isset($triggers_statistic[$uid])) {
+      $triggers_statistic[$uid] = array();
+      $rows = db_query("SELECT * FROM {metrocatch_custom_triggers} WHERE trigger_name='%s' AND uid=%d", $trigger, $uid);
+      while ($row = db_fetch_object($rows)) {
+        $triggers_statistic[$uid][$row->trigger_name] = $row->number;
+      }
+    }
+    if (isset($triggers_statistic[$uid][$trigger])) {
+      // Trigger already executed.
+      return;
+    }
+  }
+
+  // Execute trigger.
+  module_invoke_all('metrocatch_custom', $trigger, 'metrocatch_custom', $data);
+
+  // Update stats.
+  if (isset($data['account'])) {
+    $triggers_statistic[$data['account']->uid][$trigger] = 1;
+    db_query(
+      "INSERT INTO {metrocatch_custom_triggers} (uid, trigger_name, number) VALUES (%d, '%s', %d)",
+      $data['account']->uid,
+      $trigger,
+      1
+    );
+  }
+}
+
+/**
+ * 'Add metropoints' action callback.
+ */
+function metrocatch_custom_add_badge_and_metropoints_action($data, $context) {
+  if (!isset($data->account)) {
+    watchdog('metrocatch_custom', t('Internal error occured during executing "add metropoints" action: $account value not set.'), WATCHDOG_WARNING);
+    return;
+  }
+  $account = $data->account;
+  metrocatch_custom_add_metropoints($account->uid, $context['op'], $context['number']);
+  user_badges_user_add_badge($account->uid, $context['badge'], 'uid');
+  db_query("INSERT INTO {metrocatch_custom_user_badges} (bid, uid, aid) VALUES (%d, %d, %d)", $context['badge'], $account->uid, $context['aid']);
+  // Notify other modules about metropoints addition.
+  $action = actions_load($context['aid']);
+  $action->parameters = unserialize($action->parameters);
+  module_invoke_all(
+    'metrocatch_custom_badge_metropoints_added',
+    $action,
+    $account,
+    user_badges_get_badge($context['badge'])
+  );
+}
+
+/**
+ * "Add metropoints" action form callback.
+ */
+function metrocatch_custom_add_badge_and_metropoints_action_form($context) {
+  // Build badge options.
+  $badges = user_badges_get_badges('all');
+  $options = array();
+  foreach ($badges as $bid => $badge) {
+    $options[$bid] = $badge->name;
+  }
+  $form = array(
+    'number' => array(
+      '#type' => 'textfield',
+      '#title' => t('Number of points to add'),
+      '#required' => TRUE,
+      '#default_value' => isset($context['number']) ? $context['number'] : '',
+    ),
+    'badge' => array(
+      '#type' => 'select',
+      '#title' => t('Badge'),
+      '#required' => TRUE,
+      '#default_value' => isset($context['badge']) ? $context['badge'] : '',
+      '#options' => $options,
+    ),
+    'reason' => array(
+      '#type' => 'textfield',
+      '#title' => t('Assignment reason'),
+      '#required' => TRUE,
+      '#default_value' => isset($context['reason']) ? $context['reason'] : '',
+    ),
+  );
+  return $form;
+}
+
+/**
+ * "Add metropoints" action form validate callback.
+ */
+function metrocatch_custom_add_badge_and_metropoints_action_validate($form, $form_state) {
+  $v = trim($form_state['values']['number']);
+  if (!is_numeric($v) || (intval($v) != $v)) {
+    form_error($form['number'], t('Points number must be natural.'));
+  }
+}
+
+/**
+ * "Add metropoints" action submit callback.
+ */
+function metrocatch_custom_add_badge_and_metropoints_action_submit($form, $form_state) {
+  return array(
+    'number' => $form_state['values']['number'],
+    'badge' => $form_state['values']['badge'],
+    'reason' => $form_state['values']['reason'],
+  );
+}
+
+/**
+ * "Configure metropoints redeeming" form callback.
+ */
+function metrocatch_custom_configure_metropoints_form($form_state) {
+  $form = array(
+    'metrocatch_custom_metropoints_redeem_percents' => array(
+      '#tree' => TRUE,
+    ),
+  );
+  $default_values = isset($form_state['metrocatch_custom_metropoints_redeem_percents']) ? $form_state['metrocatch_custom_metropoints_redeem_percents'] : variable_get('metrocatch_custom_metropoints_redeem_percents', array(25 => 25, 50 => 45, 100 => 90));
+
+  $percents = array(25, 50, 100);
+  foreach ($percents as $value) {
+    $form['metrocatch_custom_metropoints_redeem_percents'][$value] = array(
+      '#type' => 'textfield',
+      '#title' => t('User can get @value% discount for N points', array('@value' => $value)),
+      '#required' => TRUE,
+      '#default_value' => $default_values[$value],
+    );
+  }
+
+  return system_settings_form($form);
+}
+
+/**
+ * Validate handler for "Configure metropoints redeeming" form.
+ */
+function metrocatch_custom_configure_metropoints_form_validate($form, $form_state) {
+  foreach ($form_state['values']['metrocatch_custom_metropoints_redeem_percents'] as $key => $value) {
+    if (!is_numeric($value) || intval($value) != $value || $value > 100 || $value < 0) {
+      form_error($form['metrocatch_custom_metropoints_redeem_percents'][$key], t('Discount value must be integer between 0 and 100.'));
+    }
+  }
+}
+
+/**
+ * "Redeem metropoints" form callback.
+ */
+function metrocatch_custom_redeem_points_form($form_state) {
+  drupal_set_title(t('Redeem your metropoints'));
+  if (isset($form_state['storage']['step']) && $form_state['storage']['step'] = 'show_code') {
+    $code = $form_state['storage']['code'];
+    return array(
+      'label' => array(
+        '#type' => 'item',
+        '#value' => t('Promo-code created. Use @code code for receiving a discount.', array('@code' => $code)),
+      ),
+      'ok' => array(
+        '#type' => 'submit',
+        '#value' => t('Back'),
+        '#name' => 'ok_button',
+      ),
+    );
+  }
+  global $user;
+  $redeem_settings = variable_get('metrocatch_custom_metropoints_redeem_percents', array(25 => 25, 50 => 45, 100 => 90));
+  $options = array();
+  foreach ($redeem_settings as $discount => $points) {
+    $options[$discount] = t('@percent% off the purchase of any feature (@num points)', array('@percent' => $discount, '@num' => $points));
+  }
+  reset($options);
+  return array(
+    'label' => array(
+      '#type' => 'item',
+      '#value' => t('As you earn badges for engaging with the site, you also earn metropoints that can redeemed for a discount promo code that can be used to become a MetroCatch of the Day. When you redeem them, we\'ll metromail you the code.'),
+    ),
+    'metropoints_number' => array(
+      '#title' => t('Your metropoints'),
+      '#type' => 'item',
+      '#value' => metrocatch_custom_get_metropoints_amount($user->uid),
+    ),
+    'discount' => array(
+      '#type' => 'radios',
+      '#options' => $options,
+      '#default_value' => isset($form_state['values']['discount']) ? $form_state['values']['discount'] : key($options),
+    ),
+    'redeem' => array(
+      '#type' => 'submit',
+      '#value' => t('Redeem'),
+    ),
+  );
+}
+
+/**
+ * Validate handler form "redeem metropints" form.
+ */
+function metrocatch_custom_redeem_points_form_validate($form, $form_state) {
+  if (isset($form_state['storage']['step'])) {
+    return;
+  }
+  global $user;
+  $current_points = metrocatch_custom_get_metropoints_amount($user->uid);
+  $redeem_settings = variable_get('metrocatch_custom_metropoints_redeem_percents', array(25 => 25, 50 => 45, 100 => 90));
+  $points_required = $redeem_settings[$form_state['values']['discount']];
+  if ($current_points < $points_required) {
+    form_error($form['redeem'], t('You haven\'t enough metropoints.'));
+  }
+}
+
+/**
+ * Submit handler form "redeem metropints" form.
+ */
+function metrocatch_custom_redeem_points_form_submit($form, &$form_state) {
+  if (isset($form_state['storage']['step']) && $form_state['storage']['step'] = 'show_code') {
+    global $user;
+    // Go to destination or back to profile page.
+    if (!isset($_GET['destination'])) {
+      $form_state['redirect'] = 'user/'. $user->uid;
+    }
+    // End form.
+    unset($form_state['storage']);
+    // Save points value (Can be used later in js).
+    $form_state['points_amount'] = metrocatch_custom_get_metropoints_amount($user->uid);
+  }
+  else {
+    // Change amout of metropoints.
+    $redeem_settings = variable_get('metrocatch_custom_metropoints_redeem_percents', array(25 => 25, 50 => 45, 100 => 90));
+    $points_required = $redeem_settings[$form_state['values']['discount']];
+    global $user;
+    metrocatch_custom_add_metropoints($user->uid, 'redeem', -$points_required);
+    // Create coupon.
+    $code = metrocatch_uc_create_discount_coupon($user->uid, $form_state['values']['discount']);
+    $form_state['storage']['step'] = 'show_code';
+    $form_state['storage']['code'] = $code;
+  }
+}
+
+/**
+ * Preprocess function for 'metrocatch_connect_profile_teaser'.
+ */
+function metrocatch_custom_preprocess_metrocatch_connect_profile_teaser(&$vars) {
+  $amount = metrocatch_custom_get_metropoints_amount($vars['account']->uid);
+  if (arg(2) == 'connections') {
+    $text = format_plural(
+      $amount,
+      '1 metropoint',
+      '@count metropoints'
+    );
+  }
+  else {
+    $text = format_plural(
+      $amount,
+      'metropoint (1)',
+      'metropoints (@count)'
+    );
+  }
+  popup_forms_parent_js();
+  global $user;
+  $vars['count_metropoints'] =  ($vars['account']->uid == $user->uid) ? l($text, 'redeem-metropoints') : $text;
+}
+
+/**
+ * Theme fuction for 'metrocatch_custom_user_badge'.
+ *
+ * @param array $badge
+ *   Object with the next fields:
+ *   - name: badge name.
+ *   - image: path to image (relative to drupal root).
+ *   - bid: badge id.
+ *   - another keys may present.
+ *
+ */
+function theme_metrocatch_custom_user_badge($badge) {
+  //If we haven't been supplied with a user, use whoever is logged in
+  global $user;
+  if (is_null($account)) {
+    $account = $user;
+  }
+
+  //If we have a full image URL, don't require theme_image to get the size (it only breaks)
+  $get_size = valid_url($badge->image, TRUE);
+  $description = $badge->name;
+  if (!empty($badge->description)) {
+    $description .= ': '. $badge->description;
+  }
+  if (variable_get('user_badges_imagecache', 0)) {
+
+    $image = theme('imagecache', 'user-badges', $badge->image, $badge->name, $description, array('class' => $badge->class));
+  }
+  else {
+    $image = theme('image', $badge->image, $badge->name, $description, array('class' => $badge->class), !get_size);
+  }
+
+  //We don't link the badge if there is no link and no default, or if the default is overridden
+  if (
+    ($badge->href == "" && !variable_get('user_badges_defaulthref', ''))
+    || drupal_strtolower($badge->href) == '<none>') {
+    return $image;
+  }
+  else {
+    $href = $badge->href ? $badge->href : variable_get('user_badges_defaulthref', '') ;
+
+    //Implement token replacement
+    if (module_exists('token')) {
+      $href = token_replace($href, $type = 'userbadge', $object = $badge);
+      $href = token_replace($href, $type = 'user', $object = $account);
+    }
+
+    return l($image, $href, array('html' => TRUE));
+  }
+}
+
+/**
+ * Get user's badges.
+ *
+ * @param int $uid
+ *   User id.
+ *
+ * @return array
+ *   Loaded badges, with 'reason' and 'points' fields.
+ */
+function metrocatch_custom_get_user_badges($uid) {
+  // Load user's badges.
+  $badges = user_badges_get_badges($uid, array('nolimit' => TRUE));
+  if (empty($badges)) {
+    return array();
+  }
+  // Get reasons and points.
+  $bids = array_keys($badges);
+  $rows = db_query("SELECT * FROM {metrocatch_custom_user_badges} WHERE uid = %d", $uid);
+  while ($row = db_fetch_object($rows)) {
+    if (!isset($badges[$row->bid])) {
+      continue;
+    }
+    $action = actions_load($row->aid);
+    $action->parameters = unserialize($action->parameters);
+    $badges[$row->bid]->reason = $action->parameters['reason'];
+    $badges[$row->bid]->points = $action->parameters['number'];
+    $badges[$row->bid]->description = $badges[$row->bid]->reason ."\n". format_plural(
+      $badges[$row->bid]->points,
+      t('1 MetroPoint'),
+      t('@count metropoints')
+    );
+  }
+  return $badges;
+}
+
+/**
+ * Theme function for 'metrocatch_custom_user_badges'.
+ */
+function theme_metrocatch_custom_user_badges($account, $badges) {
+  global $user;
+  if (!empty($badges)) {
+    $themed_badges = array();
+    foreach ($badges as $badge) {
+      $themed_badges[] = theme('user_badge', $badge);
+    }
+    $title = t('Badges (@num)', array('@num' => count($badges)));
+    $themed_badges = theme('user_badge_group', $themed_badges);
+  }
+  else {
+    $title = t('Badges');
+    if ($user->uid != $account->uid) {
+      $themed_badges = t('@username doеs not currently have any badges.', array('@username' => drupal_ucfirst($account->name)));
+    }
+    else {
+      $themed_badges = t('You do not currently have any badges.');
+    }
+  }
+  return
+  "<div class=\"user-profile-metrocatch-badges-wrapper\">
+    <div class=\"profile-moreinfo-field\">
+      <div class=\"profile-moreinfo-field-label group-title\">
+        {$title}
+      </div>
+      <div class=\"profile-moreinfo-field-value\">
+        {$themed_badges}
+      </div>
+    </div>
+  </div>";
+}
+
+/**
+ * Preprocess badges into template variables.
+ */
+function metrocatch_custom_preprocess_badges(&$vars) {
+  $account = $vars['account'];
+  $vars += array(
+    'metrocatch_badges' => theme('metrocatch_custom_user_badges', $account, metrocatch_custom_get_user_badges($account->uid)),
+  );
+}
+
+/**
+ * Preprocess additional variables for the metrocatch Feature profile display.
+ */
+function metrocatch_custom_preprocess_metrocatch_connect_profile_featured(&$vars) {
+  metrocatch_custom_preprocess_badges($vars);
+}
+
+/**
+ * Preprocess additional variables for the full User profile display.
+ */
+function metrocatch_custom_preprocess_metrocatch_connect_profile_full(&$vars) {
+  metrocatch_custom_preprocess_badges($vars);
+}
+
+/**
+ * Preprocess additional variables for the Conversation page.
+ */
+function metrocatch_custom_preprocess_metrocatch_conversation_page(&$vars) {
+  metrocatch_custom_preprocess_badges($vars);
+}

@@ -1,0 +1,201 @@
+.db-consistency-test-result {
+  border: 1px solid #AAA;
+  min-width: 350px;
+  margin-bottom: 5px;
+}
+
+.db-consistency-test-result-ok .db-consistency-test-result-content-wrapper {
+  background-color: #DDFFDD;
+}
+
+.db-consistency-test-result-error .db-consistency-test-result-content-wrapper {
+  background-color: #FFCCCC;
+}
+
+.db-consistency-test-result-warning .db-consistency-test-result-content-wrapper {
+  background-color: #FFFFDD;
+}
+
+.db-consistency-test-result-header {
+  background-repeat: no-repeat;
+  background-position: 6px 50%;
+  color: black;
+  height: 24px;
+  padding: 3px;
+  border-bottom: 1px solid #AAA;
+}
+
+.db-consistency-result-name {
+  float: left;
+  font-weight: bold;
+  margin-left: 25px;
+}
+
+.db-consistency-result-time {
+  float: left;
+  margin-left: 20px;
+}
+
+.db-consistency-test-result-status {
+  float: left;
+  margin-top: 2px;
+  line-height: 18px;
+}
+
+.db-consistency-test-result-ok .db-consistency-test-result-header {
+  background-image: url('/misc/watchdog-ok.png');
+}
+
+.db-consistency-test-result-error .db-consistency-test-result-header {
+  background-image: url('/misc/watchdog-error.png');
+}
+.db-consistency-test-result-warning .db-consistency-test-result-header {
+  background-image: url('/misc/watchdog-warning.png');
+}
+
+.db-consistency-test-button {
+  float:right;
+}
+
+.db-consistency-test-button input {
+  margin: 0px;
+  height: 24px;
+}
+
+.db-consistency-test-result-content-wrapper {
+  color:black;
+  overflow:hidden;
+  padding-top: 5px;
+}
+
+.db-consistency-check-test {
+  float: left;
+}
+
+.db-consistency-test-result-content {
+  float: right;
+  min-width: 350px;
+  width: 96%;
+  padding-right: 7px;
+}
+
+.db-consistency-available-fixes {
+  border: 1px solid #AAA;
+  margin-bottom: 5px;
+  margin-top: 5px;
+  width: 100%;
+}
+
+.db-consistency-available-fixes-header {
+  background: #FFF;
+  border-bottom: 1px solid #AAA;
+  font-weight: bold;
+  padding-left: 10px;
+  height: 24px;
+  line-height: 24px;
+}
+
+.db-consistency-available-fixes-content {
+  border: 1px solid #AAA;
+  margin: 5px;
+  position: relative;
+}
+
+.db-consistency-available-fixes-content-header {
+  background: #FDFDFD;
+  border-bottom: 1px solid #AAA;
+  height: 24px;
+  padding-left: 10px;
+}
+
+.db-consistency-available-fixes-content-title {
+  margin-top: 1px;
+  float: left;
+}
+
+.db-consistency-available-fixes-content-description {
+  margin-left: 7px;
+}
+
+.db-consistency-available-fixes-content-button {
+  float: right;
+}
+
+.db-consistency-available-fixes-content-button input {
+  margin: 0;
+  height: 24px;
+}
+
+/*#db-consistency-test-form .db-consistency-show-checkboxes {
+  text-align: center;
+}
+
+#db-consistency-test-form .db-consistency-show-checkboxes .form-item,
+#db-consistency-test-form .db-consistency-show-checkboxes label,
+#db-consistency-test-form .db-consistency-show-checkboxes .form-checkboxes {
+  display: inline-block;
+}*/
+
+#db-consistency-test-form .db-consistency-tests-area {
+  clear: both;
+}
+
+#db-consistency-test-form .db-consistency-tests {
+  margin-left: 200px;
+  border: 1px solid #ccc;
+  padding: 5px 5px 0px 5px;
+}
+
+.db-consistency-failed-tests #db-consistency-test-form .db-consistency-tests,
+.db-consistency-failed-tests #db-consistency-test-form .db-consistency-another-form-part {
+  margin-left: 0px;
+}
+
+.db-consistency-failed-tests .db-consistency-no-failed-tests {
+  font-size: 20px;
+  margin-top: 10px;
+}
+
+#db-consistency-test-form .db-consistency-test-groups {
+  float: left;
+  width: 200px;
+  border: 1px solid #ccc;
+}
+
+#db-consistency-test-form .db-consistency-test-groups ul {
+  padding: 0px;
+  margin: 0px;
+}
+
+#db-consistency-test-form .db-consistency-test-groups li {
+  background: none;
+  list-style-type: none;
+  margin: 0px;
+  padding: 0px;
+  border-bottom: 1px solid #D6DBDE;
+}
+
+#db-consistency-test-form .db-consistency-test-groups li a {
+  display: block;
+  background: #EFEFEF;
+  padding: 3px 8px;
+}
+
+#db-consistency-test-form .db-consistency-test-groups li a:hover {
+  background-color: #F6F6F6;
+  text-decoration: none;
+}
+
+#db-consistency-test-form .db-consistency-test-groups li a.active {
+  font-weight: bold;
+  background: white;
+}
+
+#db-consistency-test-form .db-consistency-test-groups li a.active:hover {
+  background-color: #FFFFFF;
+}
+
+#db-consistency-test-form .db-consistency-another-form-part {
+  clear: both;
+  margin-left: 200px;
+}

@@ -1,0 +1,54 @@
+<?php
+// $Id: vr_list.theme,v 1.1.2.2 2010/01/22 18:39:18 jbomb Exp $
+
+/**
+ * THeme the list form.
+ */
+function theme_vr_list_view_form($form) {
+  // Retrieve the current form_state from the form '#parameters' array. form_state
+  // should be the second element and have an index of '1.'  Next check the storage
+  // element, which should be empty if member rows and actions have not been selected
+  // and the action needs to be confirmed if storage is populated.
+  $storage = $form['#parameters'][1]['storage']['values'];
+  if (!empty($storage)) {
+    return drupal_render($form);
+  }
+  
+  // Display this form as a table.
+  foreach ($form['member'] as $id => $field) {
+    if (strpos($id, '#') === 0) {
+     continue;
+    }
+    $rows[] = array(
+      drupal_render($form['member'][$id]['status']),
+      drupal_render($form['member'][$id]['email_address']),
+      drupal_render($form['member'][$id]['first_name']),
+      drupal_render($form['member'][$id]['last_name']),
+      drupal_render($form['member'][$id]['create_date']),
+      drupal_render($form['member'][$id]['operation']),
+      );
+  }
+  $rows[] = array(
+    array(
+      'data' => drupal_render($form['submit']),
+      'align' => 'right',
+      'colspan' => 6,
+      ),
+    );
+  $header = vr_list_view_header();
+  // Add primary table
+  $output = theme('table', $header, $rows);
+  // Add pager and view options.
+  $list_size = (empty($_GET['size'])) ? 25 : $_GET['size'];
+  $pager_rows[] = array(
+    theme('vr_list_pager', $form['list_size']['#value'], $list_size),
+    array(
+      'data' => theme('vr_list_controls'),
+      'align' => 'right',
+      'colspan' => 2,
+      ),
+    );
+  $output .= theme('table', array(), $pager_rows);
+  $output .= drupal_render($form);
+  return $output;
+}

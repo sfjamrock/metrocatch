@@ -1,0 +1,656 @@
+<?php
+// $Id: vr_list.module,v 1.1.2.15 2010/07/20 14:29:36 jbomb Exp $
+
+/**
+ * hook_menu implementation
+ */
+function vr_list_menu() {
+  $items['admin/build/vr/list/visiblility'] = array(
+    'title' => t('Manage Mailing List Visibility'),
+    'description' => t('Toggle visibility for internal mailing lists.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_visibility_settings'),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.admin.inc',
+    );
+  $items['admin/build/vr/list'] = array(
+    'title' => t('Manage Mailing Lists'),
+    'description' => t('Add or delete a VerticalResponse mailing list.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_build_form'),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.admin.inc',
+    );
+  $items['admin/build/vr/list/%vr_list/edit'] = array(
+    'title callback' => 'vr_list_menu_title',
+    'title arguments' => array(4),
+    'description' => t('Add or delete a VerticalResponse mailing list.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_view_form', 4),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    );
+  $items['admin/build/vr/list/%vr_list/rename'] = array(
+    'title' => t('Rename'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_rename', 4),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 2,
+    );
+  $items['admin/build/vr/list/%vr_list/delete'] = array(
+    'title' => t('Delete'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_delete', 4),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 3,
+    );
+  $items['admin/build/vr/list/%vr_list/add-member'] = array(
+    'title' => t('Add List Member'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_member_add', 4),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    );
+  $items['admin/build/vr/list/%vr_list/list-map'] = array(
+    'title' => t('List Field Map'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_member_map', 4),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    );
+  $items['admin/build/vr/list/%vr_list/list-push'] = array(
+    'title' => t('Push Local Data'),
+    'description' => t('Push local list data to VerticalResponse'),
+    'page callback' => 'vr_list_push',
+    'page arguments' => array(4),
+    'access callback' => 'vr_list_push_access',
+    'access arguments' => array(4),
+    'file' => 'vr_list.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    );
+  $items['admin/build/vr/list/%vr_list/edit/%vr_list_member'] = array(
+    'load arguments' => array(4),
+    'title' => t('Edit Member'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_member_edit', 6),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    );
+  $items['admin/build/vr/list/segmentation'] = array(
+    'title' => t('Create List from Segmentation Query'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_segmentation'),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.segmentation.inc',
+    );
+  $items['vr/list-segments'] = array(
+    'page callback' => 'vr_list_segments',
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_list.segmentation.inc',
+    );
+  $items['admin/build/vr/list/default-map'] = array(
+    'title' => t('Default Field Map'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_list_member_map'),
+    'access arguments' => array('administer VerticalResponse'),
+    'description' => t('Create a default field map that will be used for all
+      mailing lists that do not otherwise have a field map specified.'),
+    'file' => 'vr_list.admin.inc',
+    );
+  return $items;
+}
+
+/**
+ * Access callback for vr_list_push(), user must have 'administer VerticalResponse' 
+ * permission and a field map must be defined for the given list.
+ * 
+ * @param object
+ *  a VerticalResponse list object.
+ * @return bool
+ *  TRUE if access is granted, FALSE if it is denied.
+ */
+function vr_list_push_access($list) {
+  $default = variable_get('vr_list_view_default', NULL);
+  $map = variable_get('vr_list_view_' . $list->id, $default);
+  if (user_access('administer VerticalResponse') AND !empty($map)) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Title callback for general list management pages.
+ * 
+ * @param string
+ *  VerticalResponse list id
+ */
+function vr_list_menu_title($list) {
+  return check_plain($list->name);
+}
+
+/**
+ * Return a VerticalResponse list object using a list id.
+ * 
+ * @param string
+ *  VerticalResponse list id.
+ * @return object
+ *  VerticalResponse mailing list object
+ */
+function vr_list_load($list_id) {
+  return (empty($list_id)) ? FALSE : vr_get_list_by_id($list_id);
+}
+
+/**
+ * Return a VerticalResponse Mailing List Member array using a member hash and 
+ * a list id.
+ * 
+ * @param string
+ *  List member hash provided by VerticalResponse.
+ * @param string
+ *  VerticalResponse mailing list id.
+ * @return object
+ *  VerticalResponse mailing list member object.
+ */
+function vr_list_member_load($hash, $list_id) {
+  vr_list_member_init();
+  $member = new vr_list_member($list_id, $hash);
+  return $member;
+}
+
+/**
+ * Load list member class.
+ */
+function vr_list_member_init() {
+  $path = drupal_get_path('module', 'vr_list');
+  include_once($path . '/vr_list_member.inc');
+}
+
+/**
+ * Retrieve an array of list member information for a specific
+ * mailing list.
+ * 
+ * @param int
+ *  VerticalResponse mailing list id
+ * @param int
+ *  maximum number of records to retrieve
+ * @param int
+ *  offset for list.
+ * @param array
+ *  An array of values to pass to getListMembers
+ */
+function vr_list_get_members($list_id, $max, $offset = 0, $param = array()) {
+  $param['list_id'] = $list_id;
+  $param['max_records'] = $max;
+  // Add offset
+  if (!empty($offset)) {
+    $param['offset'] = $offset;
+  }
+  $member_array = vr_api('getListMembers', $param);
+  if (!is_array($member_array)) {
+    return FALSE;
+  }
+  else {
+    vr_list_member_init();
+    foreach ($member_array as $key => $object) {
+      $member = new vr_list_member($list_id, $object);
+      $members[$key] = $member->member_array;
+    }
+  }
+  return $members;
+}
+
+/**
+ * Retrive member data from VerticalResponse getListMember response.
+ */
+function _vr_member_data($object) {
+  $member['list_id'] = $object->list_id;
+  $member['list_name'] = $object->list_name;
+  $member['list_type'] = $object->list_type;
+  if (!is_array($object->member_data)) {
+    return FALSE;
+  }
+  else {
+    foreach ($object->member_data as $property) {
+      $member[$property->name] = check_plain($property->value);
+    }
+    return $member;
+  }
+}
+
+/**
+ * hook_theme implementation
+ */
+function vr_list_theme($existing, $type, $theme, $path) {
+  return array(
+    'vr_list_view_form' => array(
+      'arguments' => array('form' => array()),
+      'file' => 'vr_list.theme',
+      ),
+    );
+}
+
+/**
+ * Convert VerticalResponse member status code to a human-friendly string.
+ * 
+ * @param int
+ *  A VerticalResponse status code
+ * @return string
+ *  Translated status code.
+ */
+function _vr_list_member_status($status_code) {
+  switch ($status_code) {
+    case NULL:
+      $code = t('Subscribed');
+      break;
+    case '0':
+      $code = t('Unsubscribed');
+      break;
+    case -3:
+      $code = t('Suppressed');
+      break;
+    case -1:
+      $code = t('Deleted');
+      break;
+  }
+  return $code;
+}
+
+/**
+ * Provide header array for the mailing list table.  This function
+ * provides the header argument for theme_table, and is used to translate
+ * sort parameters that appear in the $_GET array.
+ * 
+ * @return array
+ *  An array of header values for 
+ */
+function vr_list_view_header() {
+  $header = array(
+    array(
+      'data' => t('Status'),
+      'field' => 'optin_status',
+    ),
+    array(
+      'data' => t('E-mail Address'),
+      'field' => 'email_address',
+    ),
+    array(
+      'data' => t('First Name'),
+      'field' => 'first_name',
+      ),
+    array(
+      'data' => t('Last Name'),
+      'field' => 'last_name',
+      ),
+    array(
+      'data' => t('Created'),
+      'field' => 'created_date',
+      ),
+    array(
+      'data' => t('Operation'),
+      ),
+    );
+  return $header;
+}
+
+/**
+ * This function interperates sort options provided by Drupal's theme_table
+ * function.
+ * 
+ * Create sort options for mailing list page.  The enumerateLists method takes
+ * an order_by argument with no direction (asc, desc) argument.
+ * 
+ * TODO: Retrieve lists with vr_get_lists rather than enumerateLists
+ * 
+ * @param array
+ *  Header array from theme_table
+ * @param string
+ *  Data attribute from header array on which to sort.
+ */
+function vr_list_table_sort($header, $column) {
+  if (empty($column)) {
+    $column = 'Mailing list name';
+  }
+  $param['order_by'] = vr_sort_field($header, $column);
+  $lists = vr_api('enumerateLists', $param);
+  if ($_GET['sort'] == 'desc') {
+    $lists = array_reverse($lists);
+  }
+  return $lists;
+}
+
+/**
+ * Create a batch operation to update list information in VerticalResponse 
+ * based on field mappings in drupal.
+ * 
+ * @param array
+ *  An array of mailing list ids.
+ * @param int
+ *  campaign id from VerticalResponse
+ */
+function vr_list_update_batch($lists, $campaign = NULL) {
+  foreach ($lists as $list_id) {
+    $operations[] = array(
+      '_vr_list_update',
+      array($list_id, $campaign),
+      );
+  }
+  $batch = array(
+    'operations' => $operations,
+    'finished' => t('vr_list_update_finish'),
+    'title' => t('Updating Mailing List information in VerticalResponse'),
+    'progress_message' => t('Processed @current out of @total.'),
+    );
+  batch_set($batch);
+  // Campaign will be empty if the administrator is simply pushing
+  // local data to VerticalResponse and NOT launching a campaign.
+  // In that case batch_process needs to be invoked with a redirect destination.
+  if (empty($campaign)) {
+    $list_id = reset($lists);
+    batch_process('admin/build/vr/list/' . $list_id . '/edit');
+  }
+}
+
+/**
+ * Update VerticalRepsone Mailing List before launching a campaign.  This 
+ * is the actual callback that is used to loop through all the users that
+ * are found in a VerticalResponse list, and then search for and apply any
+ * field maps in drupal.
+ * 
+ * @see http://drupal.org/node/180528
+ * 
+ * @param int
+ *  VerticalResponse list id.
+ * @param array
+ *  context array from batch api
+ */
+function _vr_list_update($list_id, $campaign, &$context) {
+  // Get list information
+  if (empty($context['sandbox'])) {
+    $list = vr_get_list_by_id($list_id);
+    $context['sandbox']['total'] = $list->size;
+    $default_throttle = variable_get('vr_list_throttle_default', 10);
+    $context['sandbox']['max'] = variable_get('vr_list_throttle_' . $list->id, $default_throttle);
+    $context['sandbox']['progress'] = 0;
+    $context['results']['campaign'] = $campaign;
+  }
+  // Load and Save list members   
+  $params = array(
+    'list_id' => $list_id,
+    'max_records' => $context['sandbox']['max'],
+    'offset' => $context['sandbox']['progress'],
+    );
+  $members = vr_api('getListMembers', $params);
+  vr_list_member_init();
+  foreach ($members as $member) {
+    $member = new vr_list_member($list_id, $member);
+    // Only update records with a local field map.
+    if ($member->map_fields()) {
+      $member->save();
+    }
+    $context['sandbox']['progress']++;
+  }
+  if ($context['sandbox']['total'] == 0) {
+    
+  }
+  elseif ($context['sandbox']['progress'] != $context['sandbox']['total']) {
+    $context['finished'] = $context['sandbox']['progress'] / $context['sandbox']['total'];
+  }
+}
+
+/**
+ * "Finished" callback for batch list update.
+ */
+function vr_list_update_finish($success, $results, $operations) {
+  if ($success AND !empty($results['campaign'])) {
+    drupal_set_message('Drupal has updated the selected VerticalResponse mailing lists 
+      according to defined field maps.');
+    $param['campaign_id'] = $results['campaign']->id;
+    $campaign_name = $results['campaign']->name;
+    vr_api('launchEmailCampaign', $param);
+    $message = t('@name has been launched!', array('@name' => $campaign_name));
+    drupal_set_message($message);
+    watchdog('VerticalResponse', $message, array(), WATCHDOG_INFO);
+  }
+  elseif ($success AND empty($results['campaign'])) {
+    drupal_set_message('Local list information has been pushed to VerticalResponse.');
+  }
+  else {
+    $error_operation = reset($operations);
+    $message = t('An error occurred while processing %error_operation with arguments: @arguments', array('%error_operation' => $error_operation[0], '@arguments' => print_r($error_operation[1], TRUE)));
+    drupal_set_message($message);
+  }
+}
+
+/**
+ * Create a bulk operation for managing lists.
+ */
+function vr_list_user_operations() {
+  $lists = vr_get_lists();
+  $operations = array();
+  foreach ($lists as $list_id => $list_name) {
+    $operations[$list_id . '_subscribe'] = array(
+      'label' => t('Subscribe to !list', array('!list' => $list_name)),
+      'callback' => 'vr_list_bulk_subscribe',
+      'callback arguments' => array('subscribe', $list_id),
+      );
+    $operations[$list_id . '_unsubscribe'] = array(
+      'label' => t('Remove from !list', array('!list' => $list_name)),
+      'callback' => 'vr_list_bulk_subscribe',
+      'callback arguments' => array('unsubscribe', $list_id),
+      );
+    $operations['create_list'] = array(
+      'label' => t('Create VR list from selection.'),
+      'callback' => 'vr_list_bulk_subscribe',
+      'callback arguments' => array('create'),
+      );
+  }
+  // Make certain that the acting user has permission for these operations.
+  if (user_access('administer VerticalResponse')) {
+    return $operations;
+  }
+}
+
+/**
+ * Callback for user_operations.
+ */
+function vr_list_bulk_subscribe($users, $method, $list_id = NULL) {
+  // Make certain that the acting user has permission for these operations.
+  if (!user_access('administer VerticalResponse')) {
+    return;
+  }
+  // Create a new list, and then 
+  if ($method == 'create') {
+    $temp_name = 'list_' . time();
+    $param['name'] = $temp_name;
+    $param['type'] = 'email';
+    $param['custom_field_names'] = array();
+    $list_id = vr_api('createList', $param);
+    // Successfully created list.   Change method to subscribe.
+    if ($list_id != FALSE) {
+      $method = 'subscribe';
+    }
+    else {
+      $message = t('The system encountered an error while creating the new list.
+                  Please try again.');
+      drupal_set_message($message, 'error');
+      return;
+    }
+  }
+  $action = array(
+    '@action' => ucfirst($method),
+    );
+  // Add users to list.
+  $operations[] = array(
+    '_vr_list_subscribe',
+    array($users, $list_id, $method),
+    );
+  $batch = array(
+    'operations' => $operations,
+    'finished' => '_vr_list_subscribe_finish',
+    'title' => t('@action users to VerticalResponse mailing list.', $action),
+    'progress_message' => t('Processed @current out of @total.'),
+    );
+  batch_set($batch);
+}
+
+/**
+ * Bulk operation for adding and removing users from a list.
+ * 
+ * @param array
+ *  an array of uids keyed on uid.
+ * @param int
+ *  VerticalResponse list id
+ * @param string
+ *  The desired action (subscribe || unsubscribe)
+ * @param array
+ *  context array for batch operation.
+ */
+function _vr_list_subscribe($users, $list_id, $method, &$context) {
+  vr_list_member_init();
+  // Setup the operation.
+  if (empty($context['sandbox'])) {
+    // Get list from VerticalRepsonse and create a member template array.
+    $list = vr_get_list_by_id($list_id);
+    $context['results']['list'] = $list;
+    $context['results']['method'] = $method;
+    foreach ($list->fields as $key) {
+      $context['sandbox']['template'][$key] = NULL;
+    }
+    // Basic counter fields for tracking progress
+    $context['sandbox']['total'] = count($users);
+    $context['sandbox']['progress'] = 0;
+    $context['sandbox']['users'] = array_values($users);
+    
+    if ($method == 'unsubscribe') {
+      // Create a list member object to track current list membership.  This is
+      // only important when list members are being removed.
+      $list_member = new vr_list_member($list->id);
+      $members = vr_api('getListMembers', array('list_id' => $list_id, 'max_records' => $list->size));
+      foreach ($members as $member) {
+        $member = $list_member->make_array($member);
+        $list_members[$member['email_address']] = $member['hash'];
+      }
+      $context['sandbox']['members'] = $list_members;
+    }
+  }
+
+  $i = $context['sandbox']['progress'];
+  if ($method == 'subscribe') {
+    $max = $i + variable_get('vr_list_subscribe_throttle_' . $list->id, 100);
+  }
+  elseif ($method == 'unsubscribe') {
+    $max = $i + variable_get('vr_list_throttle_' . $list_id, 10);
+  }
+  $max = ($max < $context['sandbox']['total']) ? $max : $context['sandbox']['total'];
+  for ($i; $i < $max; $i++) {
+    $uid = $context['sandbox']['users'][$i];
+    $mail = db_result(db_query('SELECT mail FROM {users} WHERE uid = %d', $uid));
+    $param['list_member']['list_id'] = $list_id;
+    // Generate the "file" that should be appended to the list.
+    if ($method == 'subscribe') {
+      $template = $context['sandbox']['template'];
+      $template['email_address'] = $mail;
+      $subscriber = new vr_list_member($list_id, $template);
+      $subscriber->map_fields();
+      $context['results']['subscribers'][] = vr_list_subscribe_filter_fields($subscriber->member_array);
+    }
+    // Remove users only if they are subscribed.
+    if ($method == 'unsubscribe' AND !empty($context['sandbox']['members'][$mail])) {
+      $param['list_member']['member_data'] = array(
+        array(
+          'name' => 'hash',
+          'value' => $context['sandbox']['members'][$mail],
+          ),
+        );
+      vr_api('deleteListMember', $param);
+    }
+  }
+  $context['sandbox']['progress'] = $i;
+  $context['finished'] = ($i > 0) ? $i / $context['sandbox']['total'] : 1;
+}
+
+/**
+ * Finished callback for _vr_list_subscribe
+ */
+function _vr_list_subscribe_finish($success, $results, $operations) {
+  if ($success) {
+    $list = $results['list'];
+    
+    if ($results['method'] == 'subscribe') {
+      // Prepare to "upload" file to VerticalResponse
+      $subscribers = $results['subscribers'];
+      $param['list_id'] = $list->id;
+      $param['file'] = array(
+        'filename' => t('import_@time.csv', array('@time' => time())),
+        'delimiter' => 'csv',
+        'contents' => base64_encode(_vr_list_create_file($subscribers)),
+        );
+      $param['fields'] = array_keys($subscribers[0]);
+      $result = vr_api('appendFileToList', $param);
+      // Notify administrator if some records do not make it to VerticalResponse
+      if ($result->records_rejected > 0) {
+        $url = $result->rejected_records_file->location;
+        $message = t('One or more records were not added to the list.  <a href="@url">Click here</a>
+                    to learn why.', array('@url' => $url));
+        drupal_set_message($message, 'error');
+        watchdog('VerticalResponse', $message, array(), WATCHDOG_ERROR);
+      }
+    }
+    $tokens = array(
+      '@url' => url('admin/build/vr/list/' . $list->id . '/edit'),
+      '@list' => $list->name,
+      );
+    $message = t('<a href="@url">@list</a> has been updated.', $tokens);
+    drupal_set_message($message);
+  }
+  else {
+    $message = t('An error occured during this operation. Please try again.');
+    drupal_set_message($message);
+  }
+}
+
+/**
+ * vr_list_subscribe_filter_fields
+ * 
+ * Some fields should not be passed to VerticalResponse when a user is 
+ * subscribed.  Use this to filter them out.
+ * 
+ * @param array
+ *  member_array property from vr_list_member object
+ * @return array
+ *  filtered array
+ */
+function vr_list_subscribe_filter_fields($member) {
+  foreach ($member as $key => $value) {
+    if (empty($member[$key])) {
+      unset($member[$key]);
+    }
+  }
+  return $member;
+}
+
+/**
+ * _vr_list_create_file
+ * 
+ * Convert an array of member arrays (keyed on field) to csv format, suitable
+ * for use with the appendFileToList method provided by VerticalResponse.
+ * 
+ * @param array
+ *  An array of member arrays. Each element shall be keyed on field.
+ * @return string
+ *  The content of a csv file.
+ */
+function _vr_list_create_file($members) {
+  foreach ($members as $member) {
+    $csv .= '"' . implode('","', $member) . "\"\n";
+  }
+  return $csv;
+}

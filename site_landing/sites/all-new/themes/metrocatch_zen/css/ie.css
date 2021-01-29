@@ -1,0 +1,110 @@
+/**
+ * @file
+ * CSS targeted specifically for Internet Explorer for Windows.
+ *
+ * Any CSS in this file will apply to all versions of IE. You can target
+ * specific versions of IE by using conditional comments. See your sub-theme's
+ * .info file for an easy way to use them.
+ *
+ * While building your theme, you should be aware that IE limits Drupal to 31
+ * stylesheets total. The work-around for the bug is to enable CSS aggregation
+ * under: admin / settings / performance.
+ */
+
+
+/*
+ * Tabs
+ */
+ul.primary li a,
+ul.primary li a .tab,
+ul.secondary li a,
+ul.secondary li a .tab {
+  cursor: pointer;
+}
+
+/*
+ * Drupal nodes
+ */
+.node-unpublished .node-inner>* {
+  position: relative; /* Otherwise these elements will appear below the "Unpublished" text. */
+}
+
+/*
+ * Drupal admin tables
+ */
+tr.even th,
+tr.even td,
+tr.odd th,
+tr.odd td {
+  border-bottom: 1px solid #ccc; /* IE doesn't display borders on table rows */
+}
+
+/*
+ * Markup free clearing
+ */
+.clearfix {
+  zoom: 1;
+}
+
+.user-profile {
+  -pie-background: rgba(255, 255, 255, 0.25);
+}
+
+ul.primary li a .tab {
+  box-shadow: 0 -1px 3px #e7e6e7;
+}
+
+div#page {
+
+}
+
+.metromail-message-userpic img {
+  -pie-png-fix: true; 
+}
+
+html#popup_form {
+  -pie-background: rgba(0, 0, 0, 0.7);
+  position: static !important;
+}
+
+.metromail-more-wrapper a.metromail-more {
+  box-shadow: 0 1px 3px rgba(27, 23, 24, 0.21);
+}
+
+#block-menu-menu-metromenu li.active-trail {
+  -pie-background: rgba(52, 52, 52, 0.39);
+}
+
+html#popup_form,
+#header,
+#page,
+.metromail-message-userpic img,
+.metrocatch-profile-connections-count,
+.user-profile-connect-link .connect,
+.group-title,
+.page-title,
+.user-profile,
+ul.primary li a .tab,
+#block-menu-menu-metromenu li.active-trail,
+.metromail-more-wrapper a.metromail-more,
+input[type="button"],
+input[type="submit"],
+html .ui-dialog,
+html .popup-forms-dialog-wrapper .ui-dialog,
+html .ui-dialog .ui-dialog-titlebar,
+html .popup-forms-dialog-wrapper .ui-dialog .ui-dialog-titlebar,
+html .metrocatch-gallery-dialog .ui-dialog .ui-dialog-titlebar,
+html .ui-dialog .ui-dialog-content,
+html .popup-forms-dialog-wrapper .ui-dialog .ui-dialog-content {
+  position: relative;
+  behavior: url('/sites/all/themes/metrocatch_zen/js/PIE.htc');
+}
+
+input[type="text"],
+input[type="password"]  {
+  line-height: 30px;
+}
+
+textarea {
+  border: 1px solid #ccc;
+}

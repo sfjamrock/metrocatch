@@ -1,0 +1,39 @@
+<?php
+// $Id: vr_campaign.install,v 1.1.2.2 2010/01/12 21:22:10 jbomb Exp $
+
+/**
+ * hook_schema implementation
+ */
+function vr_campaign_schema() {
+  $schema['vr_campaign'] = array(
+    'description' => t('Join table for drupal nodes and VerticalResponse campaigns.'),
+    'fields' => array(
+      'nid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        ),
+      'vrid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        ),
+      ),
+    'primary key' => array('nid'),
+    );
+  return $schema;
+}
+
+/**
+ * hook_install implementation
+ */
+function vr_campaign_install() {
+  drupal_install_schema('vr_campaign');
+}
+
+/**
+ * hook_uninstall implementation
+ */
+function vr_campaign_uninstall() {
+  drupal_uninstall_schema('vr_campaign');
+}

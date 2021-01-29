@@ -1,0 +1,49 @@
+#cyd-utils-logs-list-form > div > div.form-item {
+  float: left;
+}
+
+#cyd-utils-logs-list-form input[type="submit"],
+#cyd-utils-pages-filter-form input[type="submit"] {
+  display: block;
+  float: left;
+}
+
+#cyd-utils-logs-list-form #edit-submit,
+#cyd-utils-pages-filter-form #edit-submit {
+  clear: both;
+}
+
+#cyd-utils-logs-list-form table,
+.page-admin-settings-cyd-utils #content-area table,
+table.cyd-utils-log-recods-table {
+  width: 100%;
+  clear: both;
+}
+
+span.cyd-error,
+span.cyd-warning {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background-image: url(/misc/watchdog-warning.png);
+  vertical-align: middle;
+}
+
+span.cyd-error {
+  background-image: url(/misc/watchdog-error.png);
+}
+
+.cyd-utils-page-tags {
+  font-size: 10px;
+}
+
+#cyd-utils-pages-filter-form > div >div.form-item {
+  float: left;
+}
+
+.cyd-utils-total-found {
+  clear: both;
+  font-size: 16px;
+  padding: 20px 0px;
+  font-weight: bold;
+}

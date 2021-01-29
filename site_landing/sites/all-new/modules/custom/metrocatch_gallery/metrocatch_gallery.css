@@ -1,0 +1,36 @@
+
+.manage-gallery-area {
+  float: left;
+}
+
+.manage-gallery-area#edit-area {
+  margin-right: 60px;
+  width: 255px;
+}
+
+.gallery-items {
+  margin: 1em 0 0;
+}
+
+.gallery-item {
+  float: left;
+  margin: 0 20px 20px 0;
+}
+
+.gallery-item img {
+  display: block;
+  border: 4px solid transparent;
+}
+
+.gallery-item.selected img {
+  border: 4px solid #7C5DC6;
+}
+
+.gallery-item .form-item {
+  display: inline;
+}
+
+.manage-gallery .actions .action {
+  float: left;
+  margin-right: 20px;
+}

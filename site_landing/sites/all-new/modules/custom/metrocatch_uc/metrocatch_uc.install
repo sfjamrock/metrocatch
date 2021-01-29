@@ -1,0 +1,15 @@
+<?php
+/**
+ * @file
+ * Module install() and uninstall() process functions
+ */
+
+
+/**
+ * Implementation of hook_update_N().
+ */
+function metrocatch_uc_update_6001() {
+  // initialize date format variable
+  variable_set('date_format_metrocatch_uc_transaction_date', 'F j, Y');
+  return array();
+}

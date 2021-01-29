@@ -1,0 +1,277 @@
+/**
+ * Css for fornt page (landing page)
+ */
+
+ /**
+  * Hide some useless elements
+  */
+.front div.tabs,
+.front span.submitted,
+.front #navigation {
+  display: none;
+}
+
+/**
+ * page backgorund
+ */
+html {
+  background: #050505 url('../images/metrocatchc-front-big-bg2.png') 50% 0px no-repeat;
+}
+
+* {
+  color: white;
+}
+
+select,
+input,
+textarea,
+select > option {
+  color: black;
+}
+
+body.front  {
+  padding-top: 57px;
+}
+
+.front .brick-helper {
+  background: url('../images/brickwall3.png') 50% 100% no-repeat;
+/*  width: 819px;
+  height: 318px;*/
+  z-index: -10;
+/*  margin-left: 223px;*/
+  position: fixed;
+  top: 0px;
+  left: 0px;
+  width: 100%;
+  height: 100%;
+
+
+
+}
+
+/**
+ * Main content block
+ */
+.front #page {
+  border-radius: 8px;
+  -moz-border-radius: 8px;
+  -webkit-border-radius: 8px;
+  -o-border-radius: 8px;
+  border: 0px solid #070707;
+  background: #070707;
+  padding: 8px;
+  width: 942px;
+  height: 577px;
+  /* Rounded corners for IE */
+	behavior: url('border-radius.htc');
+}
+
+body.front .node .content p {
+  line-height: 18px;
+  margin: 14px 0px;
+}
+
+
+.front #page .page-inner {
+  background: white;
+  border-radius: 4px;
+  -moz-border-radius: 4px;
+  -webkit-border-radius: 4px;
+  -o-border-radius: 4px;
+  /* Rounded corners for IE */
+  behavior: url('border-radius.htc');
+}
+
+.front #page .page-inner > .container {
+  position: relative;
+}
+
+.front #content {
+  margin-top: 0px;
+  position: relative;
+}
+
+.front #header {
+  height: 155px;
+  background: url('../images/metrocatch-label.png') 25px 34px no-repeat;
+}
+
+.front #header #site-slogan {
+  font: bold italic 17px Georgia;
+  color: #343434;
+  position: absolute;
+  top: 92px;
+  left: 25px;
+}
+
+.front #header #site-slogan span.date {
+  font-weight: normal;
+  color: black;
+}
+
+.front #content {
+  width: 896px;
+  height: 370px;
+  overflow: hidden;
+  background: url('../images/metrocatchc-front-bg.png') top left no-repeat;
+  padding: 15px 23px 0px 23px;
+}
+
+.front #main-wrapper {
+
+  border-radius: 4px;
+  -moz-border-radius: 4px;
+  -webkit-border-radius: 4px;
+  -o-border-radius: 4px;
+  /* Rounded corners for IE */
+	behavior: url('border-radius.htc');
+}
+
+.front #main-wrapper .bg-helper {
+  height: 37px;
+  background: #c4c4c4;
+  border-radius: 0px 0px 4px 4px;
+  -moz-border-radius: 0px 0px 4px 4px;
+  -webkit-border-radius: 0px 0px 4px 4px;
+  -o-border-radius: 0px 0px 4px 4px;
+}
+
+
+.front #content h1.title {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 37px;
+  color: white;
+  font-weight: normal;
+}
+
+.front #content h1.title .site-name {
+  font-weight: bold;
+}
+
+/**
+ * Bottom "metrocatch" label
+ */
+.front .page-inner .label-helper {
+  position: absolute;
+  bottom: -61px;
+  right: -8px;
+  width: 309px;
+  height: 46px;
+  background: url('../images/metrocatch-bottom-label.png') top left no-repeat;
+}
+
+
+/**
+ * Text styles
+ */
+.front .node {
+  font: normal 15px Arial, Helvetica, sans-serif;
+  color: #fafafa;
+}
+
+.front .node p.first {
+  font-size: 17px;
+}
+
+.front .node .content {
+  padding-right: 364px;
+}
+
+/**
+ * Form styles
+ */
+.front .node .content form {
+  position: absolute;
+  top: 60px;
+  right: 29px;
+}
+
+.front .node .content form input[type="text"] {
+  width: 310px;
+  border: none;
+  height: 18px;
+  line-height: 18px;
+  margin-top: 2px;
+  padding: 0px;
+}
+
+.front .node .content form label {
+  font-size: 15px;
+  font-weight: normal;
+}
+
+.front .node .content form .webform-container-inline .form-item label,
+.front .node .content form .webform-container-inline {
+  display: inline;
+  line-height: 18px;
+}
+
+.front .node .content form .webform-container-inline .form-item label {
+  margin-right: 3px;
+}
+
+.front .node .content form .webform-container-inline select {
+  width: 80px;
+  font-size: 12px;
+  margin-top: 0px;
+}
+
+.front .node .content form span.form-required {
+  display: none;
+}
+
+.front .node .content form #edit-submitted-i-am-a-wrapper {
+  margin-right: 5px;
+}
+
+.front .node .content form input[type="submit"] {
+  border:none;
+  background: url('../images/join-button.png') top left no-repeat;
+  width: 174px;
+  height: 47px;
+  cursor: pointer;
+  overflow: hidden;
+  text-indent: -1000px;
+  /* hide text in IE */
+  color: transparent;
+  text-transform: capitalize;
+  margin-top: 13px;
+  position: relative;
+  left: -6px;
+}
+
+/**
+ * Message styles
+ */
+
+.front div.messages {
+  position: absolute;
+  right: 29px;
+  top: 225px;
+  width: 310px;
+  padding: 0px;
+  margin: 0px;
+  background: none;
+  border: none;
+  z-index: 10;
+}
+
+.front div.messages .messages-inner {
+  position: relative;
+
+}
+
+.front div.messages .messages-inner .inner {
+  background-color: #54457d;
+  z-index: inherit;
+  border: 1px solid #6b4dc0;
+  color: #fafafa;
+  padding: 5px;
+  border-radius: 4px;
+  -moz-border-radius: 4px;
+  -webkit-border-radius: 4px;
+  -o-border-radius: 4px;
+  /* Rounded corners for IE */
+	behavior: url('border-radius.htc');
+}
+

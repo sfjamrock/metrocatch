@@ -1,0 +1,206 @@
+
+.metromail-messages-wrapper {
+  margin: 11px 0 0 0;
+}
+
+.metromail-message-container {
+  padding: 6px 10px 0 0;
+}
+
+.children .metromail-message-container {
+
+}
+
+.metromail-message {
+  border: 0;
+  padding: 13px 0 0 2px;
+  line-height: 20px;
+  word-spacing: -1px;
+}
+
+.metromail-message-userpic {
+  padding: 0px 14px 0 4px;
+}
+
+.metromail-message-userpic img {
+  border: 3px solid #fff;
+  box-shadow: rgba(28, 22, 24, 0.27) 0px 0px 5px;
+  -webkit-box-shadow: rgba(28, 22, 24, 0.27) 0px 0px 5px;
+  -moz-box-shadow: rgba(28, 22, 24, 0.27) 0px 0px 5px;
+}
+
+.metromail-message a {
+  color: #55428b;
+}
+
+.metromail-message-username,
+.metromail-message-username a {
+  font-weight: bold;
+  font-size: 16px;
+  color: #55428b;
+}
+
+.metromail-message-actions,
+.metromail-message-actions a {
+  color: #3f3f3f;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 0;
+}
+
+.metromail-message-actions {
+  position: relative;
+  bottom: 12px;
+  right: -10px;
+  line-height: 11px;
+  min-width: 109px;
+  padding-right: 10px;
+}
+
+.children .metromail-message-actions {
+
+}
+
+.metromail-message .children {
+  margin-left: 31px;
+}
+
+.metromail-message-actions a {
+  float: right;
+/*   position: absolute; */
+/*   bottom: 0; */
+}
+
+.metromail-message-actions .action-separator {
+  float: right;
+  padding: 0px 6px;
+}
+
+/* .metromail-message-actions a.metromail-reply { */
+/*   right: 73px; */
+/* } */
+
+.metromail-message-actions a.metromail-thread.expanded {
+  margin-right: 9px;
+}
+
+.metromail-message-date {
+  color: #878686;
+  font-size: 11px;
+  position: relative;
+  right: 5px;
+  top: -17px;
+}
+
+.metromail-message.even {
+  background: #f5f5f5;
+}
+
+.children .metromail-message.even {
+  background: transparent;
+}
+
+.metromail-message.odd {
+/*   background: #7798b0; */
+}
+
+.metromail-message-connection-actions a {
+  color: #000;
+  font-size: 13px;
+  font-weight: normal;
+  text-decoration: none;
+}
+
+.metromail-message-header {
+
+}
+
+.metromail-message-body {
+  padding: 5px 0 20px;
+  min-height: 60px;
+}
+
+
+.children .thread-wrapper {
+  margin: 0px 0 0 5px;
+}
+
+.children .metromail-message {
+
+}
+
+input.metromail-flag-checbox {
+  border: 0;
+  position: relative;
+  top: 3px;
+}
+
+.emailme-flag-wrapper,
+.emailme-flag-wrapper a {
+  color: #fff;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.emailme-flag-wrapper {
+  padding: 0;
+  margin: 0;
+  height: 34px;
+  line-height: 34px;
+  position: absolute;
+  right: 5px;
+  top: 8px;
+}
+
+.emailme-flag-wrapper .form-item {
+  margin: 0;
+  display: inline;
+}
+
+.metromail-more-wrapper {
+  padding: 10px;
+  border: none;
+  text-align: center;
+}
+
+.metromail-more-wrapper a.metromail-more,
+.metromail-more-wrapper a.metromail-more:hover {
+  display: block;
+  tex-tdecoration: none;
+  font-weight: bold;
+  padding: 10px 12px;
+  -moz-box-shadow: 0 -1px 3px rgba(27, 23, 24, 0.21);
+  -webkit-box-shadow: 0 -1px 3px rgba(27, 23, 24, 0.21);
+  box-shadow: 0 -1px 3px rgba(27, 23, 24, 0.21);
+  border: 1px solid #fff;
+  border-radius: 4px;
+  -moz-border-radius: 4px;
+  -webkit-border-radius: 4px;
+  -o-border-radius: 4px;
+}
+
+.metromail-more-wrapper a.metromail-more {
+  color: #8c8c8c;
+  background: #131213 url('../images/fallbacks/tab-bg-fallback.png') top left repeat-x;
+  background: linear-gradient(center, #4a4a4a 23%, #121112 62%);
+  background: -o-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -moz-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -webkit-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -ms-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -webkit-gradient(linear, left top, left bottom, from(#4a4a4a), to(#121112));
+}
+
+.metromail-more-wrapper a.metromail-more:hover {
+  color: #fff;
+  background: #5e47a3 url('../images/fallbacks/tab-active-bg-fallback.png') top left repeat-x;
+  background: linear-gradient(center, #9680dc 23%, #5e47a3 62%);
+  background: -o-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -moz-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -webkit-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -ms-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -webkit-gradient(linear, left top, left bottom, from(#9680dc), to(#5e47a3));
+}
+
+.metromail-message-additions {
+  margin-top: 10px;
+}

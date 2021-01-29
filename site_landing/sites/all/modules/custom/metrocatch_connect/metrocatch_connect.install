@@ -1,0 +1,93 @@
+<?php
+/**
+ * @file
+ * Module install() and uninstall() process functions
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function metrocatch_connect_install() {
+  drupal_install_schema('metrocatch_connect');
+  _metrocatch_connect_create_products();
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function metrocatch_connect_uninstall() {
+  drupal_uninstall_schema('metrocatch_connect');
+  // delete product nodes
+  $nids = array(
+    variable_get('metrocatch_connect_feature_product_nid', 0),
+    variable_get('metrocatch_connect_subfeature_product_nid', 0),
+  );
+  foreach ($nids as $nid) {
+    if ($nid) {
+      node_delete($nid);
+    }
+  }
+  variable_del('metrocatch_connect_feature_product_nid');
+  variable_del('metrocatch_connect_subfeature_product_nid');
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function metrocatch_connect_schema() {
+  return array(
+    'metrocatch_connect_catches' => array(
+      'descriptions' => 'Contains "catch of the day" features',
+      'fields' => array(
+        'fid' => array(
+          'description' => 'Feature id',
+          'type' => 'serial',
+          'not null' => TRUE,
+        ),
+        'uid' => array(
+          'description' => 'User id',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'date' => array(
+          'type' => 'datetime',
+          'description' => 'Catch date',
+          'not null' => TRUE,
+        ),
+        'type' => array(
+          'description' => 'Type',
+          'type' => 'varchar',
+          'length' => 16,
+          'not null' => TRUE,
+        ),
+        'sex' => array(
+          'description' => 'Sex',
+          'type' => 'varchar',
+          'length' => 8,
+          'not null' => TRUE,
+        ),
+        'sex_preference' => array(
+          'description' => 'Sexual preferences',
+          'type' => 'varchar',
+          'length' => 8,
+          'not null' => TRUE,
+        ),
+      ),
+      'primary key' => array('fid'),
+      'indexes' => array(
+        'uid_date' => array('uid', 'date'),
+        'date' => array('date'),
+        'date_sex_preference' => array('date', 'sex_preference'),
+      ),
+    ),
+  );
+}
+
+/**
+ * Create products, required for module
+ */
+function _metrocatch_connect_create_products() {
+  variable_set('metrocatch_connect_feature_product_nid', metrocatch_uc_create_product('Catch Of The Day Feature', 'catch_feature', 9.99));
+  variable_set('metrocatch_connect_subfeature_product_nid', metrocatch_uc_create_product('Catch Of The Day Subfeature', 'catch_subfeature', 5.99));
+}

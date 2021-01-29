@@ -1,0 +1,11 @@
+; $Id: vr.info,v 1.1.2.2 2009/08/19 20:36:39 jbomb Exp $
+name = VerticalResponse
+description = Messaging integration leveraging VerticalResponse API.
+core = 6.x
+dependencies[] = content
+; Information added by drupal.org packaging script on 2010-07-23
+version = "6.x-1.1"
+core = "6.x"
+project = "vr"
+datestamp = "1279893922"
+

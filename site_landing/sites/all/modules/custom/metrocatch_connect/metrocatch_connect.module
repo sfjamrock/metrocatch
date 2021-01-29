@@ -1,0 +1,574 @@
+<?php
+/**
+ * @file
+ * General function and hook implementations
+ */
+
+// constant section
+define('METROCATCH_CONNECT_ERROR_INVALID_DATE', 1);
+define('METROCATCH_CONNECT_ERROR_INVALID_UID', 2);
+define('METROCATCH_CONNECT_ERROR_BUSY_DAY', 4);
+define('METROCATCH_CONNECT_ERROR_ALREADY_FEATURED', 8);
+define('METROCATCH_SEX_MALE', 'man');
+define('METROCATCH_SEX_FEMALE', 'woman');
+define('METROCATCH_SEX_PREFERENCE_WOMEN', 'women');
+define('METROCATCH_SEX_PREFERENCE_MEN', 'men');
+define('METROCATCH_CATCH_TYPE_FEATURE', 'feature');
+define('METROCATCH_CATCH_TYPE_SUBFEATURE', 'subfeature');
+
+// global array with messages
+global $metrocatch_connect_error_messages;
+$metrocatch_connect_error_messages = array(
+  METROCATCH_CONNECT_ERROR_INVALID_DATE => 'Invalid date (in past)',
+  METROCATCH_CONNECT_ERROR_INVALID_UID => 'User not found',
+  METROCATCH_CONNECT_ERROR_BUSY_DAY => 'Already exists a MetroCatch feature of this type and this day',
+  METROCATCH_CONNECT_ERROR_ALREADY_FEATURED => 'This user alredy has feature or subfeature on this day',
+);
+
+/**
+ * @name hooks Hook implementations.
+ * @{
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function metrocatch_connect_menu() {
+  return array(
+     // admin pages
+    'admin/metrocatch/catches' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'Administer MetroCatch Features',
+      'access arguments' => array('administer metrocatch connect'),
+      'page callback' => 'metrocatch_connect_admin_list_catches',
+      'file' => 'metrocatch_connect.admin.inc',
+    ),
+    'admin/metrocatch/catches/list' => array(
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'title' => 'List',
+      'weight' => 1,
+    ),
+    'admin/metrocatch/catches/add' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'Add new',
+      'access arguments' => array('administer metrocatch connect'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_connect_admin_add_catch_form'),
+      'file' => 'metrocatch_connect.admin.inc',
+      'weight' => 2,
+    ),
+    'admin/metrocatch/catches/delete/%' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Delete feature',
+      'page callback' => 'metrocatch_connect_admin_delete_catch',
+      'page arguments' => array(4),
+      'access arguments' => array('administer metrocatch connect'),
+      'file' => 'metrocatch_connect.admin.inc',
+    ),
+    // user pages
+    'connect/purchase' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'Become a MetroCatch',
+      'access arguments' => array('become a metrocatch'),
+      'page callback' => 'metrocatch_connect_become_metrocatch',
+      'file' => 'metrocatch_connect.pages.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function metrocatch_connect_theme() {
+  $path = drupal_get_path('module', 'metrocatch_connect');
+  return array(
+    'metrocatch_connect_become_metrocatch_page' => array(
+      'arguments' => array('purchase_form' => NULL),
+      'template' => 'metrocatch-connect-become-metrocatch-page',
+      'path' => $path,
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function metrocatch_connect_perm() {
+  return array('administer metrocatch connect', 'become a metrocatch');
+}
+
+/**
+ *  Implementation hook_db_test().
+ */
+function metrocatch_connect_db_test() {
+  return array(
+    'metrocatch_connect_catches.users_exist' => array(
+      'title' => t('Missing users in catches'),
+      'description' => t('Check if catches belong to nonexistent users.'),
+      'table' => 'metrocatch_connect_catches',
+      'severity' => 'error',
+      'test_query' => "SELECT COUNT(*) FROM {metrocatch_connect_catches} m LEFT JOIN {users} u ON m.uid = u.uid WHERE u.uid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT m.fid FROM {metrocatch_connect_catches} m LEFT JOIN {users} u ON m.uid = u.uid WHERE u.uid IS NULL",
+      'error_list_description' => 'Feature ids of catches which belong to missing users: @list',
+      'fixes' => array(
+        'metrocatch_connect_catches_delete_wrong_records' => array(
+          'description' => t('Delete records, that referes to non-existent users.'),
+          'query' => "DELETE FROM {metrocatch_connect_catches} m LEFT JOIN {users} u ON m.uid = u.uid WHERE u.uid IS NULL",
+        ),
+      ),
+    ),
+    'metrocatch_connect_catches.excess_features_exists' => array(
+      'title' => t('Catches limit per day excessed (of type "feature")'),
+      'description' => t('Check if exists more than 1 Catch Of The Day feature with the same sex, sex preference and day values.'),
+      'table' => 'metrocatch_connect_catches',
+      'severity' => 'error',
+      'test_query' => "SELECT COUNT(*) AS cnt FROM {metrocatch_connect_catches} mcc WHERE mcc.type='feature' GROUP BY mcc.sex, mcc.sex_preference, mcc.date HAVING cnt > 1",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT DATE_FORMAT(mcc.date, '%%d.%%m.%%Y') FROM {metrocatch_connect_catches} mcc WHERE mcc.type='feature' GROUP BY mcc.sex, mcc.sex_preference, mcc.date HAVING COUNT(*) > 1",
+      'error_list_description' => 'Dates, that has more than one Catch Of The Day feature with the same sex and sex preference: @list',
+    ),
+    'metrocatch_connect_catches.excess_subfeatures_exists' => array(
+      'title' => t('Catches limit per day excessed (of type "subfeature")'),
+      'description' => t('Check if exists more than 3 Catch Of The Day subfeature with the same sex, sex preference and day values.'),
+      'table' => 'metrocatch_connect_catches',
+      'severity' => 'error',
+      'test_query' => "SELECT COUNT(*) AS cnt FROM {metrocatch_connect_catches} mcc WHERE mcc.type='subfeature' GROUP BY mcc.sex, mcc.sex_preference, mcc.date HAVING cnt > 3",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT DATE_FORMAT(mcc.date, '%%d.%%m.%%Y') FROM {metrocatch_connect_catches} mcc WHERE mcc.type='subfeature' GROUP BY mcc.sex, mcc.sex_preference, mcc.date HAVING COUNT(*) > 3",
+      'error_list_description' => 'Dates, that has more than one Catch Of The Day subfeature with the same sex and sex preference: @list',
+    ),
+    'metrocatch_connect_catches.duplicate_catches_for_user' => array(
+      'title' => t('Duplicate (sub)features on the same day'),
+      'description' => t('Check that all users has no more than one catch for the each day.'),
+      'table' => 'metrocatch_connect_catches',
+      'severity' => 'error',
+      'test_query' => "SELECT * FROM {metrocatch_connect_catches} m1 LEFT JOIN metrocatch_connect_catches m2 ON m1.uid=m2.uid AND m1.date=m2.date AND m1.fid<>m2.fid WHERE m2.fid IS NOT NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT CONCAT(m1.uid, '_', DATE_FORMAT(m1.date, '%%d.%%m.%%Y')) FROM {metrocatch_connect_catches} m1 LEFT JOIN metrocatch_connect_catches m2 ON m1.uid=m2.uid AND m1.date=m2.date AND m1.fid<>m2.fid WHERE m2.fid IS NOT NULL GROUP BY m1.uid, m1.date",
+      'error_list_description' => 'Uid-date pairs of users and days, that has more than one catch (sub)feature on this day: @list',
+    ),
+  );
+}
+
+/**
+ * @} End of "name hooks".
+ */
+
+/**
+ * @name api API implementations.
+ * @{
+ */
+
+/**
+ * Get count of catch features of selected type, planned for given date
+ * @param string $date
+ * @param string $sex
+ * @param string $sex_preference
+ * @param string $type
+ */
+function metrotach_connect_get_catch_feature_count($date, $sex, $sex_preference, $type) {
+  $row = db_query("SELECT COUNT(*) FROM {metrocatch_connect_catches} WHERE sex='%s' AND sex_preference='%s' AND type='%s' AND date='%s'", $sex, $sex_preference, $type, $date);
+  return db_result($row);
+}
+
+/**
+ * Get user feature on given date
+ * @param int $uid user id
+ * @param String $date
+ * @return object user feature or FALSE
+ */
+function metrocatch_connect_get_user_feature($uid, $date) {
+  return db_fetch_object(db_query("SELECT * FROM {metrocatch_connect_catches} WHERE uid=%d AND date='%s'", $uid, $date));
+}
+
+/**
+ * Create new "catch of the day" record
+ * @param array $data array with following keys: date, type, sex, sex_preferences, uid
+ */
+function metrocatch_connect_create_catch_feature($data) {
+  $now = time();
+  if (strtotime($data['date']) < $now) {
+    return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_INVALID_DATE);
+  }
+  if (!user_load($data['uid'])) {
+    return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_INVALID_UID);
+  }
+  $count = metrotach_connect_get_catch_feature_count($data['date'], $data['sex'], $data['sex_preference'], $data['type']);
+  if ($data['type'] == METROCATCH_CATCH_TYPE_FEATURE) {
+    if ($count > 0) {
+      return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_BUSY_DAY);
+    }
+  }
+  else { // METROCATCH_CATCH_TYPE_SUBFEATURE
+    if ($count > 2) {
+      return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_BUSY_DAY);
+    }
+  }
+  // user alredy has feeature on this day
+  if (metrocatch_connect_get_user_feature($data['uid'], $data['date'])) {
+    return metrocatch_connect_set_last_error(METROCATCH_CONNECT_ERROR_ALREADY_FEATURED);
+  }
+  // format date
+  $data['date'] = date('Y-m-d', strtotime($data['date']));
+  drupal_write_record('metrocatch_connect_catches', $data);
+  return metrocatch_connect_set_last_error(0);
+}
+
+/**
+ * Set code of the last error
+ * @param int $error_number
+ */
+function metrocatch_connect_set_last_error($error_number = NULL) {
+  static $last_error = 0;
+  if ($error_number !== NULL) {
+    $last_error = $error_number;
+    return $last_error;
+  }
+  if ($last_error === 0) {
+    return NULL;
+  }
+  return $last_error;
+}
+
+/**
+ * Get text of last error, occured in the connects logic
+ * @return string error desctiption or NULL
+ */
+function metrocatch_connect_get_last_error() {
+  $error_code = metrocatch_connect_set_last_error();
+  global $metrocatch_connect_error_messages;
+  if ($error_code && isset($metrocatch_connect_error_messages[$error_code])) {
+    return t($metrocatch_connect_error_messages[$error_code]);
+  }
+  return NULL;
+}
+
+/**
+ * @} End of "name api".
+ */
+
+/**
+ * @name helper Helper functions.
+ * @{
+ */
+
+/**
+ * Product callback for "purchase" for of the metrocatch_uc module
+ * @param string $op operation - 'products', 'validate' or 'purchased'
+ * @param array $arg1 entire purchase form or order (depends on $op)
+ * @param array $arg2 form state or NULL
+ * @return depends on $op:
+ *   - 'validate': TRUE or FALSE, function can set errors by form_error() function
+ *   - 'purchased': none
+ *   - 'products': array of products to purchasem array with the follwing keys:
+ *      - 'nid' - nid of the product node
+ *      - 'qty'  - quantity
+ *      - 'price' - price
+ *      - 'data' - oprional array with custom data
+ */
+function metrocatch_connect_product_callback($op, $arg1 = NULL, $arg2 = NULL) {
+  switch ($op) {
+    case 'purchased':
+      // products purchased, cteate catch records
+      $product = $arg1->products[0];
+      if (!$product) {
+        return;
+      }
+      $profile = metrocatch_profile_get_profile($arg1->uid);
+      $data = array(
+        'sex' => $profile->field_profile_sex[0]['value'],
+        'sex_preference' => $profile->field_profile_sex_preference[0]['value'],
+        'type' => $product->data['feature_type'],
+        'uid' => $arg1->uid,
+      );
+      $catch_date = str_replace('_', '-', $product->data['catch_date']);
+      $dates_to_create = array($catch_date);
+      if ($product->data['three_monts_plan']) {
+        $dates_to_create[] = date('d-m-Y', strtotime($catch_date .' +1 month'));
+        $dates_to_create[] = date('d-m-Y', strtotime($catch_date .' +2 months'));
+      }
+      foreach ($dates_to_create as $date) {
+        $data['date'] = $date;
+        if ($error = metrocatch_connect_create_catch_feature($data)) {
+          watchdog(
+            'metrocatch_connect',
+            'Error during creating catch of type @type for user @uid on date @date (error code: @code))',
+            array('@type' => $product->data['feature_type'], '@uid' => $arg1->uid, '@date' => $date, '@code' => $error)
+          );
+        }
+      }
+      break;
+    case 'products':
+      $form_state = $arg2;
+      $feature = new stdClass();
+      $feature_type = $form_state['values']['feature_type'];
+      if ($feature_type == METROCATCH_CATCH_TYPE_FEATURE) {
+        $feature->nid = variable_get('metrocatch_connect_feature_product_nid', 0);
+      }
+      else {
+        // subfeature
+        $feature->nid = variable_get('metrocatch_connect_subfeature_product_nid', 0);
+      }
+      $node = node_load($feature->nid);
+      $feature->price = $node->sell_price;
+      if ($form_state['values']['three_months_plan']) {
+        $feature->qty = 3;
+        if ($form_state['values']['feature_type'] == METROCATCH_CATCH_TYPE_FEATURE) {
+          $feature->price *= 0.75;
+        }
+        else {
+          $feature->price *= 0.85;
+        }
+      }
+      else {
+        $feature->qty = 1;
+      }
+      $feature->data = array(
+        'catch_date' => $form_state['values']['catch_date'],
+        'three_monts_plan' => $form_state['values']['three_months_plan'],
+        'feature_type' => $feature_type,
+      );
+      return array($feature);
+      break;
+  }
+}
+
+/**
+ * Form "become a metrocatch" callback
+ */
+function metrocatch_connect_feature_purchase_form(&$form_state) {
+  if (!isset($form_state['storage']['step'])) {
+    $form_state['storage']['step'] = 'fill_form';
+  }
+  switch ($form_state['storage']['step']) {
+    case 'fill_form';
+      if (isset($form_state['storage']['old_values'])) {
+        $form_state['values'] = $form_state['storage']['old_values'];
+        unset($form_state['storage']['old_values']);
+      }
+      $feature_price = variable_get('metrocatch_connect_feature_price', 9.99);
+      $subfeature_price = variable_get('metrocatch_connect_subfeature_price', 5.99);
+      $form = array(
+        'feature_type' => array(
+          '#prefix' => '<div id="feature-type-radios">',
+          '#suffix' => '</div>',
+          '#type' => 'radios',
+          '#title' => '',
+          '#options' => array(METROCATCH_CATCH_TYPE_FEATURE => t('MetroCatch of the Day Feature: !price', array('!price' => metrocatch_uc_format_price($feature_price))), METROCATCH_CATCH_TYPE_SUBFEATURE => t('MetroCatch of the Day Subfeature: !price', array('!price' => metrocatch_uc_format_price($subfeature_price)))),
+          '#default_value' => isset($form_state['values']['feature_type']) ? $form_state['values']['feature_type'] : METROCATCH_CATCH_TYPE_FEATURE,
+        ),
+        'three_months_plan' => array(
+          '#type' => 'checkbox',
+          '#title' => t('Make it a 3 Month Plan'),
+          '#default_value' => isset($form_state['values']['three_months_plan']) ? $form_state['values']['three_months_plan'] : 0,
+        ),
+        'catch_date' => array(
+          '#type' => 'hidden',
+          '#default_value' => isset($form_state['values']['catch_date']) ? $form_state['values']['catch_date'] : '',
+        ),
+      );
+      break;
+    default:
+      $form = array();
+  }
+  // add "purchase form"
+  $form =  array_merge($form, metrocatch_uc_purchase_form($form_state, 'metrocatch_connect_product_callback'));
+  // set weights
+  $weight = 1.0;
+  foreach (element_children($form) as $key) {
+    $form[$key]['#weight'] = $weight++;
+  }
+  if (!is_array($form['#after_build'])) {
+    $form['#after_build'] = array();
+  }
+  if ($form_state['storage']['step'] == 'fill_form') {
+    // add another validate handler
+    array_unshift($form['submit']['#validate'], 'metrocatch_connect_feature_purchase_form_validate');
+    array_unshift($form['submit']['#submit'], 'metrocatch_connect_feature_purchase_form_submit');
+    if (isset($form_state['values']['feature_question'])) {
+      $question_default_value = $form_state['values']['feature_question'];
+    }
+    else {
+      global $user;
+      $profile = metrocatch_profile_get_profile($user->uid);
+      $question_default_value = $profile->field_profile_feature_question[0]['value'];
+    }
+    $form['feature_question'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Feature Question'),
+      '#description' => t('What should your potential dates know about you?'),
+      '#default_value' => $question_default_value,
+      '#weight' => $form['promo_code']['#weight'] + 0.1,
+    );
+  }
+  $form['#after_build'][] = 'metrocatch_connect_feature_purchase_form_after_build';
+  return $form;
+}
+
+/**
+ * Additional validate handler for the "purchase" form
+ */
+function metrocatch_connect_feature_purchase_form_validate(&$form, &$form_state) {
+  if ($form_state['storage']['step'] != 'fill_form') {
+    return;
+  }
+  global $user;
+  // validate selected date values
+  $feature_type = $form_state['values']['feature_type'];
+  // 1. check date format
+  $dateParts = $form_state['values']['catch_date'];
+  if (!$dateParts) {
+    form_error($form['catch_date'], t('You must selected a MetroCatch day.'));
+    return;
+  }
+  $dateParts = explode('_', $dateParts);
+  if (!checkdate($dateParts[1], $dateParts[0], $dateParts[2])) {
+    form_error($form['catch_date'], t('Invalid catch date selected.'));
+    return;
+  }
+  // 2. check date range
+  $today = strtotime(date('Y-m-d'));
+  if ($feature_type == METROCATCH_CATCH_TYPE_FEATURE) {
+    $min_date = $today + 86400 * 7; // 7 days
+  }
+  else {
+    // $feature_type == 'subfeature'
+    $min_date = $today + 86400 * 1; // 1 day
+  }
+  $max_date = strtotime(date("Y-m-d", $today) ." +3 months");
+  $checked_date = strtotime($dateParts[2] .'-'. $dateParts[1] .'-'. $dateParts[0]);
+  if ($checked_date < $min_date || $checked_date > $max_date) {
+    form_error($form['catch_date'], t('Invalid catch date selected.'));
+    return;
+  }
+  // check one day, and maybe two "plan" days
+  $dates_to_check = array($form_state['values']['catch_date']);
+  if ($form_state['values']['three_months_plan']) {
+    $dates_to_check[] = date('d_m_Y', strtotime(date("Y-m-d", $checked_date) ." +1 month"));
+    $dates_to_check[] = date('d_m_Y', strtotime(date("Y-m-d", $checked_date) ." +2 months"));
+  }
+  // compare the new day values with the original, if they not match, that next month has no original day
+  $original_day = $dateParts[0];
+  $busy_days = metrocatch_connect_get_busy_days($user->uid, $feature_type);
+  foreach ($dates_to_check as $date) {
+    if (isset($busy_days[$date]) || (int)$date != $original_day) {
+      // force conversion to int required for selecting day from d_m_Y string.
+      // we can also use explode('_', $date), but conversion is shorter
+      form_error($form['catch_date'], t("You can't select this day."));
+      return;
+    }
+  }
+}
+
+/**
+ * Additional submit handler for the "purchase" form
+ */
+function metrocatch_connect_feature_purchase_form_submit($form, $form_state) {
+  // save "Feature Question" field
+  global $user;
+  $profile = metrocatch_profile_get_profile($user->uid);
+  if (!$profile) {
+    // :-(
+    return;
+  }
+  $profile->field_profile_feature_question[0]['value'] = $form_state['values']['feature_question'];
+  node_save($profile);
+}
+
+/**
+ * Get days, that are filled up by catches
+ * @param int $uid
+ * @param string $type feature or subfeature
+ * @return array of days (string representation, where key id date and value = TRUE)
+ */
+function metrocatch_connect_get_busy_days($uid, $type, $format = 'j_n_Y') {
+  $node = metrocatch_profile_get_profile($uid);
+  if ($type == METROCATCH_CATCH_TYPE_FEATURE) {
+    // feature
+    $max_records = 1;
+  }
+  else {
+    // subfeature
+    $max_records = 3;
+  }
+  $busy_dates = array();
+  // select busy dates
+  $now = time();
+  $rows = db_query(
+    "SELECT tmp.date FROM (
+      SELECT COUNT(fid) AS feature_count, date AS date
+      FROM {metrocatch_connect_catches}
+      WHERE type='%s'
+        AND sex='%s'
+        AND sex_preference='%s'
+        AND date BETWEEN '%s' AND '%s'
+      GROUP BY date
+    ) tmp
+    WHERE tmp.feature_count >= %d",
+    $type,
+    $node->field_profile_sex[0]['value'],
+    $node->field_profile_sex_preference[0]['value'],
+    date("Y-m-d", $now + 86400*1), // 1 day
+    date("Y-m-d", $now + 86400*90), // 90 days
+    $max_records
+  );
+  while ($date = db_result($rows)) {
+    $busy_dates[$date] = TRUE;
+  }
+  // select dates, already planned by this user
+  $rows = db_query(
+    "SELECT date AS date
+    FROM {metrocatch_connect_catches}
+    WHERE uid=%d
+      AND date BETWEEN '%s' AND '%s'",
+    $uid,
+    date("Y-m-d", $now + 86400*1), // 1 day
+    date("Y-m-d", $now + 86400*186) // 6 months
+  );
+  while ($date = db_result($rows)) {
+    $busy_dates[$date] = TRUE;
+  }
+  $dates = array();
+  foreach ($busy_dates as $date => $true) {
+    $dates[date($format, strtotime($date))] = TRUE;
+  }
+  return $dates;
+}
+
+/**
+ * Pre-render function for purchase form
+ */
+function metrocatch_connect_feature_purchase_form_after_build($form, $form_state) {
+  static $added = FALSE;
+  if ($added) {
+    return $form;
+  }
+  $added = TRUE;
+  jquery_ui_add('ui.datepicker', 'lightness');
+  drupal_add_js(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect_become_metrocatch.js');
+  global $user;
+  // add required js settings
+  drupal_add_js(
+    array(
+      'metrocatch' => array(
+        'feature' => array(
+          'daterange_min' => '+7D',
+          'daterange_max' => '+3M',
+          'busydays' => metrocatch_connect_get_busy_days($user->uid, METROCATCH_CATCH_TYPE_FEATURE),
+        ),
+        'subfeature' => array(
+          'daterange_min' => '+1D',
+          'daterange_max' => '+3M',
+          'busydays' => metrocatch_connect_get_busy_days($user->uid, METROCATCH_CATCH_TYPE_SUBFEATURE)
+        ),
+      ),
+    ),
+    'setting'
+  );
+  return $form;
+}
+
+/**
+ * @} End of "name helper".
+ */

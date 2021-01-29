@@ -1,0 +1,272 @@
+<?php
+/**
+ * @file
+ * General functions and hook implementations.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function metrocatch_email_menu() {
+  return array(
+    'admin/metrocatch/email' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'Configure Metrocatch Daily Email',
+      'description' => 'VerticalResponse settings',
+      'access arguments' => array('administer metroCatch daily email'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_email_settings_form'),
+      'file' => 'metrocatch_email.admin.inc',
+    ),
+    'admin/metrocatch/email/settings' => array(
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'title' => 'Settings',
+      'weight' => -1,
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function metrocatch_email_perm() {
+  return array(
+    'administer metroCatch daily email',
+  );
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter().
+ */
+function metrocatch_email_form_user_register_alter(&$form, $form_state) {
+  if (!is_array($form['#validate'])) {
+    $form['#validate'] = array();
+  }
+  $form['#validate'][] = 'metrocatch_email_user_register_validate';
+}
+
+/**
+ * Implementation of hook_user().
+ */
+function metrocatch_email_user($op, &$edit, &$account, $category = NULL) {
+  switch ($op) {
+    case 'insert':
+      // Add user to our "intrested in" and "sex" groups.
+      // Fetch setting.
+      $data = $edit['metrocatch_email_registration_data'];
+      $data['email'] = $account->mail;
+      $list_id = metrocatch_email_get_user_list($data['sex'], $data['sex_preference']);
+      metrocatch_email_add_list_member($list_id, $data);
+      unset($edit['metrocatch_email_registration_data']);
+      break;
+    case 'update':
+      // user has changed his/her email.
+      if (isset($edit['mail']) && $edit['mail'] != $account->mail) {
+        $list_id = metrocatch_email_get_user_list($account->sex, $account->preference);
+        // Remove from an old list.
+        if ($object = metrocatch_email_get_list_member($list_id, $account->mail)) {
+          $hash = metrocatch_email_get_member_data($object, 'hash');
+          metrocatch_email_delete_list_member($list_id, $hash);
+        }
+        // Add to the new one.
+        $profile = metrocatch_profile_get_profile($account->uid);
+        $data = array(
+          'sex' => $profile->field_profile_sex[0]['value'],
+          'sex_preference' => $profile->field_profile_sex_preference[0]['value'],
+          'first_name' => $profile->field_profile_first_name[0]['value'],
+          'last_name' => $profile->field_profile_last_name[0]['value'],
+          'email' => $edit['mail'],
+        );
+        metrocatch_email_add_list_member($list_id, $data);
+      }
+      break;
+    case 'delete':
+      $list_id = metrocatch_email_get_user_list($account->sex, $account->preference);
+      if ($object = metrocatch_email_get_list_member($list_id, $account->mail)) {
+        $hash = metrocatch_email_get_member_data($object, 'hash');
+        metrocatch_email_delete_list_member($list_id, $hash);
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_nodeapi().
+ */
+function metrocatch_email_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  if ($node->type != 'profile') {
+    return;
+  }
+  switch ($op) {
+    case 'update':
+      $profile_changed = $list_changed = FALSE;
+      $original = node_load($node->nid);
+      // Check if one of listed fields has changed:
+      foreach (array('field_profile_first_name', 'field_profile_last_name') as $field) {
+        $changed = ($original->{$field}[0]['value'] != $node->{$field}[0]['value']);
+        if ($changed) {
+          $profile_changed = TRUE;
+        }
+      }
+      if ($profile_changed) {
+        // We should update user account in the Daily mail Mailchimp list:
+        $account = user_load($node->uid);
+        $data = array(
+          // Use $original to get sex and preference because $node does not
+          // contain them since these fields can't be edited and form does not include this fields.
+          'sex' => $original->field_profile_sex[0]['value'],
+          'sex_preference' => $original->field_profile_sex_preference[0]['value'],
+          'first_name' => $node->field_profile_first_name[0]['value'],
+          'last_name' => $node->field_profile_last_name[0]['value'],
+          'email' => $account->mail,
+        );
+        $list_id = metrocatch_email_get_user_list($data['sex'], $data['sex_preference']);
+        metrocatch_email_add_list_member($list_id, $data);
+      }
+      break;
+  }
+}
+
+/**
+ * Additional validate handler for user register form.
+ *
+ * It is needed because content_profile_registration module hides profile values
+ * from $form_state on previous validate handler, but we need to know sex and
+ * sex preference of the user on hook_user($op = 'insert').
+ */
+function metrocatch_email_user_register_validate($form, &$form_state) {
+  if (isset($form_state['values']['field_profile_sex'])) {
+    $form_state['values']['metrocatch_email_registration_data'] = array(
+      'sex' => $form_state['values']['field_profile_sex'][0]['value'],
+      'sex_preference' => $form_state['values']['field_profile_sex_preference'][0]['value'],
+      'first_name' => $form_state['values']['field_profile_first_name'][0]['value'],
+      'last_name' => $form_state['values']['field_profile_last_name'][0]['value'],
+    );
+  }
+}
+
+/**
+ * Add user to a given list
+ *
+ * @param $list_id
+ *   An ID of a list to add user in.
+ * @param $data
+ *   An associative array containing:
+ *   - sex: a string containing user's sex.
+ *   - sex_preference: a string containing user's sexual preference.
+ *   - first_name: a string containing user's first name.
+ *   - last_name: a string containing user's last name.
+ *   - email: a string containing user's email.
+ *
+ * @see metrocatch_email_user_register_validate()
+ */
+function metrocatch_email_add_list_member($list_id, $data) {
+  $params = array(
+    'list_member' => array(
+      'list_id' => $list_id,
+      'member_data' => array(
+        array(
+          'name' => 'email_address',
+          'value' => $data['email'],
+        ),
+        array(
+          'name' => 'first_name',
+          'value' => $data['first_name'],
+        ),
+        array(
+          'name' => 'last_name',
+          'value' => $data['last_name'],
+        ),
+        array(
+          'name' => 'gender',
+          'value' => ($data['sex'] == 'man' ? 'Male' : 'Female'),
+        ),
+        array(
+          'name' => 'SexPreference',
+          'value' => $data['sex_preference'],
+        ),
+      ),
+    ),
+  );
+  return vr_api('addListMember', $params);
+}
+
+/**
+ * Get a member from a given list.
+ *
+ * @param $list_id
+ *   An ID of a list to get user from.
+ * @param $email
+ *   A string containing user's email.
+ */
+function metrocatch_email_get_list_member($list_id, $email) {
+  $params = array(
+    'list_id' => $list_id,
+    'email_address' => $email,
+  );
+  return vr_api('getListMemberByEmailAddress', $params, TRUE);
+}
+
+/**
+ * Delete user from a list.
+ *
+ * @param $list_id
+ *   An ID of a list to delete user from.
+ * @param $hash
+ *   A string containing user's email hash.
+ */
+function metrocatch_email_delete_list_member($list_id, $hash) {
+  $params = array(
+    'list_member' => array(
+      'list_id' => $list_id,
+      'member_data' => array(
+        array(
+          'name' => 'hash',
+          'value' => $hash,
+        ),
+      ),
+    ),
+  );
+  return vr_api('deleteListMember', $params);
+}
+
+/**
+ * Get a member data from a given object.
+ *
+ * @param $key
+ *   A string identifier of key to get.
+ *
+ * @return
+ *   Member data value or NULL.
+ */
+function metrocatch_email_get_member_data($object, $key) {
+  foreach ($object->member_data as $data) {
+    if ($data->name == $key) {
+      return $data->value;
+    }
+  }
+  return NULL;
+}
+
+/**
+ * Get the ID of the list by a given sex and preference.
+ */
+function metrocatch_email_get_user_list($sex = NULL, $preference = NULL) {
+  $lists = array(
+    'man' => array(
+      'women' => variable_get('metrocatch_email_men_interested_in_women_list_id', ''),
+      'men' => variable_get('metrocatch_email_men_interested_in_men_list_id', ''),
+    ),
+    'woman' => array(
+      'men' => variable_get('metrocatch_email_women_interested_in_men_list_id', ''),
+      'women' => variable_get('metrocatch_email_women_interested_in_women_list_id', ''),
+    ),
+  );
+  if (empty($sex)) {
+    return $lists;
+  }
+  if (empty($preference)) {
+    return (isset($lists[$sex]) ? $lists[$sex] : NULL);
+  }
+  return (isset($lists[$sex][$preference]) ? $lists[$sex][$preference] : NULL);
+}

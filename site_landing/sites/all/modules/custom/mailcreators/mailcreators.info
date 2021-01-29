@@ -1,0 +1,5 @@
+; $Id$
+name = Mail Creators
+description = API for creating and sending emails.
+package = Custom
+core = 6.x

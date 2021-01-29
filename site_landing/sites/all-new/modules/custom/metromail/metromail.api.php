@@ -1,0 +1,62 @@
+<?php
+
+/**
+ * @file
+ * Hooks provided by the metromail.module.
+ */
+
+/**
+ * Allows other modules to define their own metromail message types.
+ *
+ * @return array
+ *   An associative array of provided message types, keys are machine-readable names of types.
+ *   Values of returned array must be arrays with following keys:
+ *   - title: A string to be used as title in admin settings form.
+ *   - description: (optional) A string to be used as description of this message types.
+ *     It is also displayed only in admin settings form.
+ *   - enabled: (optional) Boolean indicating whether this message type is enabled.
+ *     Default TRUE but admin can always change this setting (disable sending messages of this type)
+ *     in admin settings form. In this case this setting will be stored in Drupal variable which name
+ *     is metromail_MESSAGETYPE_enabled, where MESSAGETYPE is machine-readable name of this type.
+ *   - default_template: A string containing default message template.
+ *     This template can be changed by admin in module settings form.
+ *     In this case new template will be stored in Drupal vatiable which name
+ *     is metromail_MESSAGETYPE_template, where MESSAGETYPE is machine-readable name of this type.
+ *   - placeholders: An array of available placeholders which can be used in message template.
+ *     They will be listed in admin settings form below the template textarea.
+ */
+function hook_metromail_info() {
+  return array(
+    'request_pending' => array(
+      'title' => t('Sends a verification request for an initial connection.'),
+      'description' => t('Optional description'),
+      'enabled' => FALSE, // Means this message type is disabled by default.
+      'default_template' => '!from have suggested you to initialize connection. !accept or !deny?',
+      'placeholders' => array('!from', '!accept', '!deny'),
+    ),
+  );
+}
+
+/**
+ * When metromail message is created any module can specify some additional data.
+ * Every time message will be shown this hook will be invoked with provided data, so that
+ * module can add some text to the end of a message.
+ *
+ * @param $data
+ *   An array of any data provided by this module.
+ *
+ * @return string Additional message text.
+ */
+function hook_metromail_message_additions($data) {
+  return (!empty($data['actions']) ? implode(' | ', $data['actions']) : '');
+}
+
+/**
+ * Allows other modules to make neccessary changes before message is displayed.
+ *
+ * @param $message
+ *   stdClass object representing displayed message.
+ */
+function hook_metromail_message_alter($message) {
+  $message->body = t('Hello world');
+}

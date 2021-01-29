@@ -1,0 +1,91 @@
+<?php
+/**
+ * @file
+ * Module install(), uninstall() hooks and related functions.
+ */
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function metrocatch_email_uninstall() {
+  // delete module's variables
+  db_query("DELETE FROM {variables} WHERE name LIKE '%s'", 'metrocatch_email_%');
+}
+
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Adds all users into Mailchimp list.
+ */
+function metrocatch_email_update_6101() {
+  $handler = _mailchimp_get_api_object();
+  $sex_group = variable_get('metrocatch_email_sex_group', 0);
+  $intrested_in_group = variable_get('metrocatch_email_intrested_in_group', 0);
+  $list = (object) array(
+    'id' => variable_get('metrocatch_email_list', 0),
+    'batch' => array(),
+    'unsubscribe' => array(),
+  );
+  $list->listMergeVars = $handler->listMergeVars($list->id);
+  $result = db_query('SELECT uid FROM {users} u WHERE status <> 0 ORDER BY uid DESC');
+  while ($uid = db_result($result)) {
+    if ($account = user_load($uid)) {
+      $profile = metrocatch_profile_get_profile($account->uid);
+      $groups = array(
+        array('id' => $sex_group, 'groups' => _mailchimp_implode_interest_groups($profile->field_profile_sex[0]['value'])),
+        array('id' => $intrested_in_group, 'groups' => _mailchimp_implode_interest_groups($profile->field_profile_sex_preference[0]['value']))
+      );
+      $subscriber = _mailchimp_load_user_list_mergevars($account->uid, $list->id, $list->listMergeVars);
+      $subscriber = array_merge($subscriber, array(
+        'FNAME' => check_plain($account->name),
+        'LNAME' => $profile->field_profile_last_name[0]['value'],
+        'GROUPINGS' => $groups,
+      ));
+      $list->batch[] = $subscriber;
+    }
+  }
+  $count = 0;
+  if (!empty($list->batch)) {
+    $ret = $handler->listBatchSubscribe($list->id, $list->batch, FALSE, TRUE);
+    if ($ret['error_count'] > 0) {
+      foreach ((array) $ret['errors'] as $error) {
+        watchdog('mailchimp', 'MCAPI Error: %errormsg', array('%errormsg' => $error['message']), WATCHDOG_ERROR);
+      }
+    }
+    $count += $ret['success_count'];
+  }
+  drupal_set_message(format_plural($count, 'Added 1 user into Mailchimp list.', 'Added @count users into Mailchimp list.'));
+  return array();
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Now we user VerticalResponse marketing tool.
+ * Add all existing users to an appropriate email lists.
+ */
+function metrocatch_email_update_6102() {
+  $result = db_query('SELECT * FROM {users} u WHERE status <> 0 AND uid <> 0 ORDER BY uid DESC');
+  $success = $all = 0;
+  while ($account = db_fetch_object($result)) {
+    $profile = metrocatch_profile_get_profile($account->uid);
+    $data = array(
+      'sex' => $profile->field_profile_sex[0]['value'],
+      'sex_preference' => $profile->field_profile_sex_preference[0]['value'],
+      'first_name' => $profile->field_profile_first_name[0]['value'],
+      'last_name' => $profile->field_profile_last_name[0]['value'],
+      'email' => $account->mail,
+    );
+    $list_id = metrocatch_email_get_user_list($data['sex'], $data['sex_preference']);
+    if (metrocatch_email_add_list_member($list_id, $data)) {
+      $success++;
+    }
+    $all++;
+  }
+  drupal_set_message(t('@count user have been added to VerticalResponse mailing lists.', array('@count' => $success)));
+  if ($success < $all) {
+    drupal_set_message(t('Problem occurred while adding @count users to VerticalResponse mailing lists.', array('@count' => $all - $success)), 'error');
+  }
+  return array();
+}

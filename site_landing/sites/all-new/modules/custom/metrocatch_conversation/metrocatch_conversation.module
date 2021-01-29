@@ -1,0 +1,1528 @@
+<?php
+/**
+ * @file
+ * General function and hook implementations
+ *
+ */
+
+include_once('metrocatch_conversation.features.inc');
+
+/**
+ * @name hooks Hook implementations.
+ * @{
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function metrocatch_conversation_menu() {
+  return array(
+    'user/%user/conversation' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'The Conversation',
+      'page callback' => 'metrocatch_conversation_page',
+      'page arguments' => array(1),
+      'access callback' => 'metrocatch_connect_user_profile_access',
+      'access arguments' => array(1),
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'ajax-metrocatch-conversation-comment-submit' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'AJAX callback: submits comment form on the conversation page.',
+      'page callback' => 'metrocatch_conversation_ajax_comment_submit_page',
+      'access callback' => TRUE,
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'ajax-metrocatch-conversation-get-comments' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'AJAX callback: loads comments for a specified conversation entry.',
+      'page callback' => 'metrocatch_conversation_ajax_get_comments_page',
+      'access callback' => 'metrocatch_conversation_ajax_get_comments_access',
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'metrocatch-conversation/feed/facebook' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'oAuth callback for the Facebook application',
+      'page callback' => 'metrocatch_conversation_add_facebook_feed_page',
+      'access callback' => 'metrocatch_conversation_add_feed_access',
+      'access arguments' => array('facebook'),
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'metrocatch-conversation/feed/twitter' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Gets and saves request token, redirects user to the twitter authorization page.',
+      'page callback' => 'metrocatch_conversation_add_twitter_feed_page',
+      'access callback' => 'metrocatch_conversation_add_feed_access',
+      'access arguments' => array('twitter'),
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'metrocatch-conversation/feed/twitter/finalize' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Finalize authorization: gets and saves access token',
+      'page callback' => 'metrocatch_conversation_add_twitter_feed_finalize_page',
+      'access callback' => '_metrocatch_conversation_add_twitter_feed_finalize_access',
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'metrocatch-conversation/unfeed/facebook' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Removes feeding from user\'s Facebook',
+      'page callback' => 'metrocatch_conversation_remove_facebook_feed_page',
+      'access callback' => '_metrocatch_conversation_remove_feed_access',
+      'access arguments' => array('facebook'),
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'metrocatch-conversation/unfeed/twitter' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Removes feeding from user\'s twitter',
+      'page callback' => 'metrocatch_conversation_remove_twitter_feed_page',
+      'access callback' => '_metrocatch_conversation_remove_feed_access',
+      'access arguments' => array('twitter'),
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'metrocatch/real-time-feed/facebook' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Feeds from Facebook in real-time mode',
+      'page callback' => 'metrocatch_conversation_facebook_updates',
+      'access callback' => 'metrocatch_conversation_facebook_updates_access',
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'metrocatch-conversation-remove-entry/%node' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Delete conversation entry',
+      'page callback' => 'metrocatch_conversation_delete_entry_page',
+      'access callback' => 'metrocatch_conversation_delete_entry_access',
+      'access arguments' => array(1),
+      'page arguments' => array(1),
+      'file' => 'metrocatch_conversation.pages.inc',
+    ),
+    'admin/metrocatch/metrocatch-conversation' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'The conversation',
+      'description' => 'Configure The Conversation (Facebook and Twitter integration settings, conversation page settings).',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_conversation_settings_form'),
+      'access arguments' => array('configure metrocatch conversation'),
+      'file' => 'metrocatch_conversation.admin.inc',
+    ),
+    'admin/metrocatch/metrocatch-conversation/settings' => array(
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'title' => 'Settings',
+      'weight' => -1,
+    ),
+    'admin/metrocatch/metrocatch-conversation/send-broadcast' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'Send broadcast message',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_conversation_post_broadcast_entry_form'),
+      'access arguments' => array('configure metrocatch conversation'),
+      'file' => 'metrocatch_conversation.admin.inc',
+      'weight' => 1,
+    ),
+    'admin/metrocatch/metrocatch-conversation/view-facebook-subscribtions' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Your Facebook application subscribtions',
+      'page callback' => 'metrocatch_conversation_overview_facebook_subscribtions_page',
+      'access arguments' => array('configure metrocatch conversation'),
+      'file' => 'metrocatch_conversation.admin.inc',
+    ),
+  );
+}
+
+function metrocatch_conversation_menu_alter(&$items) {
+  $items['user/%user_uid_optional'] = $items['user/%user/conversation'];
+  $items['user/%user_uid_optional']['type'] = MENU_NORMAL_ITEM;
+  unset($items['user/%user/conversation']);
+  // Rename default tab.
+  $items['user/%user/view']['title'] = 'Profile';
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function metrocatch_conversation_perm() {
+  return array('configure metrocatch conversation');
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function metrocatch_conversation_theme() {
+  $template_path = drupal_get_path('module', 'metrocatch_conversation') .'/templates';
+  return array(
+    'metrocatch_conversation_entry' => array(
+      'template' => 'metrocatch-conversation-entry',
+      'path' => $template_path,
+      'arguments' => array('node' => NULL),
+    ),
+    'metrocatch_conversation_entries' => array(
+      'arguments' => array('entries' => array()),
+    ),
+    'metrocatch_conversation_page' => array(
+      'template' => 'metrocatch-conversation-page',
+      'path' => $template_path,
+      'arguments' => array('records' => array(), 'owner' => 0, 'skip' => 0),
+    ),
+    'metrocatch_conversation_entry_author' => array(
+      'arguments' => array('account' => NULL),
+    ),
+    'metrocatch_conversation_entry_links' => array(
+      'arguments' => array('node' => NULL),
+    ),
+    'metrocatch_conversation_view_more_link' => array(
+      'arguments' => array('account' => NULL, 'skip' => 0),
+    ),
+    'metrocatch_conversation_facebook_post' => array(
+      'arguments' => array('post' => NULL),
+      'template' => 'metrocatch-conversation-facebook-post',
+      'path' => $template_path,
+    ),
+    'metrocatch_conversation_facebook_post_attachment' => array(
+      'arguments' => array('post' => NULL),
+    ),
+    'metrocatch_conversation_twitter_tweet' => array(
+      'arguments' => array('tweet' => NULL),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_user().
+ */
+function metrocatch_conversation_user($op, &$edit, &$account, $category = NULL) {
+  if ($op == 'delete') {
+    foreach (array('facebook', 'twitter') as $provider) {
+      if (metrocatch_conversation_get_feed($account->uid, $provider, 'uid')) {
+        metrocatch_conversation_remove_feed($account->uid, $provider);
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_flag_access().
+ */
+function metrocatch_conversation_flag_access($flag, $content_id, $action, $account) {
+  global $user;
+  if ($flag->name == 'metrocatch_conversation_private') {
+    return ($user->uid == 1 || ($content_id == $account->uid));
+  }
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function metrocatch_conversation_form_alter(&$form, $form_state, $form_id) {
+  switch ($form_id) {
+    case 'profile_node_form':
+    case 'user_register':
+      // add "Profile Conversations" to profile edit page
+      $flag = flag_get_flag('metrocatch_conversation_private');
+      if (isset($form_state['values']['metrocatch_conversation_flag'])) {
+        $default_value = $form_state['values']['metrocatch_conversation_flag'];
+      }
+      else {
+        $uid = ($form_id == 'user_register' ? $form['#uid'] : $form['#node']->uid);
+        if (!empty($uid)) {
+          $default_value = (int) $flag->is_flagged($uid);
+        }
+        else {
+          $default_value = 0;
+        }
+      }
+      $form['metrocatch_conversation_flag'] = array(
+        '#type' => 'radios',
+        '#title' => t('Profile Conversation'),
+        '#options' => array(
+          0 => t($flag->unflag_short),
+          1 => t($flag->flag_short),
+        ),
+        '#default_value' => $default_value,
+        '#weight' => 50,
+      );
+      if (!is_array($form['#submit'])) {
+        $form['#submit'] = array();
+      }
+      $form['#submit'][] = 'metrocatch_conversation_profile_node_form_submit';
+      break;
+  }
+  if (strpos($form_id, 'comment_form_') !== 0) {
+    return;
+  }
+  $form['#submit'] = array('comment_form_submit');
+  $form['#validate'] = array('comment_form_validate');
+  unset($form['comment_filter']['format']['guidelines']);
+  if (isset($form['nid']['#value'])) {
+    $node = node_load($form['nid']['#value']);
+    if ($node && $node->type == 'conversation_entry') {
+      global $user;
+      if (isset($user->metrocatch_profile_realname)) {
+        $form['author']['#value'] = $user->metrocatch_profile_realname;
+      }
+      unset($form['_author']);
+      unset($form['preview']);
+      $form['comment_filter']['comment']['#rows'] = 2;
+      $form['comment_filter']['comment']['#resizable'] = FALSE;
+      $form['comment_filter']['comment']['#js_text_placeholder'] = t('Write a comment...');
+
+      $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Post'),
+        '#id' => 'submit-post-'. $form['nid']['#value'],
+        '#ahah' =>  array(
+          'path' => 'ajax-metrocatch-conversation-comment-submit',
+          'wrapper' => 'node-comment-form-'. $form['nid']['#value'],
+          'method' => 'replace',
+          'effect' => 'fade',
+          'event' => 'click',
+        ),
+      );
+      if (!is_array($form['#submit'])) {
+        $form['#submit'] = array();
+      }
+      $form['#submit'][] = 'metrocatch_conversation_comment_form_submit';
+      unset($form['#action']);
+      $form['#prefix'] = '<div id="node-comment-form-'. $form['nid']['#value'] .'" class="add-comment-form-wrapper">';
+      $form['#suffix'] = '</div>';
+      if (!empty($form_state['submitted']) && !form_get_errors()) {
+        $form['load_comments'] = array(
+          '#value' => '<script type="text/javascript">Drupal.metrocatch_conversation.form_submit_callback('. $form['nid']['#value'] .');</script>',
+        );
+      }
+      $form['#attributes']['class'] = 'node-comment-form';
+    }
+  }
+}
+
+/**
+ * Implementation of hook_forms().
+ */
+function metrocatch_conversation_forms($form_id, $args) {
+  if (strpos($form_id, 'comment_form_') === 0) {
+    return array(
+      $form_id => array(
+        'callback' => 'comment_form',
+      ),
+    );
+  }
+}
+
+/**
+ * Implementation of hook_comment().
+ */
+function metrocatch_conversation_comment(&$a1, $op) {
+  switch ($op) {
+    case 'insert':
+      $account = user_load($a1['uid']);
+      $node = node_load($a1['nid']);
+      if ($node->type == 'conversation_entry') {
+        module_invoke_all('metrocatch_conversation_new_comment', $account, $node, $a1);
+      }
+      break;
+    case 'validate':
+      $node = node_load($a1['nid']);
+      if ($node->type == 'conversation_entry' && empty($node->field_conversation_entry_conv_id[0]['uid'])) {
+        form_set_error('comment', t('Can\'t comment broadcast post.'));
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_quickcron().
+ */
+function metrocatch_conversation_quickcron() {
+  _metrocatch_conversation_update_facebook_feed();
+  _metrocatch_conversation_update_twitter_feed();
+}
+
+/**
+ * Implementation of hook_popup_forms_data().
+ */
+function metrocatch_conversation_popup_forms_data() {
+  return array(
+    'metrocatch_conversation_delete_entry_form' => array(
+      'params' => array('nid' => '0'),
+      'close_buttons' => array('op'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_node_grants().
+ */
+function metrocatch_conversation_node_grants($account, $op) {
+  if ($op == 'delete') {
+    return array(
+      'metrocatch_conversation_owner' => array($account->uid),
+    );
+  }
+  return array();
+}
+
+/**
+ * Implementation of hook_node_access_records().
+ */
+function metrocatch_conversation_node_access_records($node) {
+  if ($node->type != 'conversation_entry' || empty($node->field_conversation_entry_conv_id[0]['uid'])) {
+    return;
+  }
+  return array(
+    array(
+      'realm' => 'metrocatch_conversation_owner',
+      'gid' => $node->field_conversation_entry_conv_id[0]['uid'],
+      'grant_view' => FALSE,
+      'grant_update' => FALSE,
+      'grant_delete' => TRUE,
+      'priority' => 0,
+    ),
+  );
+}
+
+/**
+ *  Implementation hook_db_test().
+ */
+function metrocatch_conversation_db_test() {
+  return array(
+    'metrocatch_conversation_social_integration.missing_users' => array(
+      'title' => t('Missing users in Facebook or Twitter feeds.'),
+      'description' => t('Check if there are Facebook or Twitter feeds which belongs to unexisting users..'),
+      'table' => 'metrocatch_conversation_social_integration',
+      'severity' => 'error',
+      'test_query' => "SELECT COUNT(mcs.uid) FROM {metrocatch_conversation_social_integration} mcs LEFT JOIN {users} u ON mcs.uid = u.uid WHERE u.uid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT mcs.uid FROM {metrocatch_conversation_social_integration} mcs LEFT JOIN {users} u ON mcs.uid = u.uid WHERE u.uid IS NULL",
+      'error_list_description' => 'Ids of unexisting users.',
+      'fixes' => array(
+        'metrocatch_conversation_delete_orphan_feeds' => array(
+          'description' => t('Delete feeds which belongs to unexisting users.'),
+          'query' => "DELETE FROM {metrocatch_conversation_social_integration} mcs LEFT JOIN {users} u ON mcs.uid = u.uid WHERE u.uid IS NULL",
+        ),
+      ),
+    ),
+    'metrocatch_conversation_twitter_queue.twitter_missing_users' => array(
+      'title' => t('Missing users in Twitter updates.'),
+      'description' => t('Check if there are unexistent users for whom we try to get updates from Twitter.'),
+      'table' => 'metrocatch_conversation_social_integration',
+      'severity' => 'error',
+      'test_query' => "SELECT COUNT(tq.uid) FROM {metrocatch_conversation_twitter_queue} tq LEFT JOIN {users} u ON tq.uid = u.uid WHERE u.uid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT tq.uid FROM {metrocatch_conversation_twitter_queue} tq LEFT JOIN {users} u ON tq.uid = u.uid WHERE u.uid IS NULL",
+      'error_list_description' => 'IDs of missing users.',
+      'fixes' => array(
+        'metrocatch_conversation_delete_orphan_twitter_updates' => array(
+          'description' => t('Delete update queues which belong to unexisting users..'),
+          'query' => "DELETE FROM {metrocatch_conversation_twitter_queue} tq LEFT JOIN {users} u ON tq.uid = u.uid WHERE u.uid IS NULL",
+        ),
+      ),
+    ),
+    'metrocatch_conversation_facebook_queue.too_much_unprocessed_queues' => array(
+      'title' => t('Too much unprocessed Facebook updates queues.'),
+      'description' => t('Check if there are lots of unprocessed Facebook update queues which means Quickcron does not run often enough.'),
+      'table' => 'metrocatch_conversation_facebook_queue',
+      'severity' => 'warning',
+      'test_query' => "SELECT IF((SELECT COUNT(qid) FROM {metrocatch_conversation_facebook_queue}) > 50, 1, 0)",
+      'test_type' => 'negative',
+    ),
+  );
+}
+
+/**
+ * @} End of "name hooks".
+ */
+
+/**
+ * @name api API implementations.
+ * @{
+ */
+
+/**
+ * Access callback for the feed adding page.
+ *
+ * Path: metrocatch/feed/%
+ *
+ * Here we check:
+ * 1. User is not anonymous and he adds feed to himself.
+ * 2. Provider is valid (facebook or twitter).
+ * 3. User does not has feed for this provider.
+ *
+ * @param $provider
+ *   The provider ID: facebook or twitter.
+ * @param $account
+ *   (optional) StdClass object of account to check access for.
+ *   Default is current user.
+ *
+ * @see metrocatch_conversation_menu()
+ * @see template_preprocess_metrocatch_conversation_page()
+ */
+function metrocatch_conversation_add_feed_access($provider, $account = NULL) {
+  global $user;
+  if (empty($account)) {
+    $account = $user;
+  }
+  if (!$account->uid || $account->uid != $user->uid) {
+    return FALSE;
+  }
+  if (!in_array($provider, array('facebook', 'twitter'))) {
+    return FALSE;
+  }
+  $feed = metrocatch_conversation_get_feed($account->uid, $provider, 'uid');
+  return ($feed === FALSE);
+}
+
+/**
+ * Access callback for the feed removal page.
+ *
+ * Path: metrocatch/unfeed/%
+ *
+ * Here we check:
+ * 1. User is not anonymous and he removes his own feed.
+ * 2. Provider is valid (facebook or twitter).
+ * 3. User has feed for this provider.
+ *
+ * @param $provider
+ *   The provider ID: facebook or twitter.
+ * @param $account
+ *   (optional) StdClass object of account to check access for.
+ *   Default is current user.
+ *
+ * @see metrocatch_conversation_menu()
+ * @see template_preprocess_metrocatch_conversation_page()
+ */
+function _metrocatch_conversation_remove_feed_access($provider, $account = NULL) {
+  global $user;
+  if (empty($account)) {
+    $account = $user;
+  }
+  if (!$account->uid || $account->uid != $user->uid) {
+    return FALSE;
+  }
+  $feed = metrocatch_conversation_get_feed($account->uid, $provider, 'uid');
+  return ($feed !== FALSE);
+}
+
+/**
+ * Access callback for the Facebook real-time updates page.
+ *
+ * Path: metrocatch/real-time-feed/facebook
+ *
+ * 1. If request method is GET, then Facebook verificates subscription
+ *    and we should check provided token.
+ * 2. If request method is POST, then we receive updates in JSON format
+ *    and we should check signature provided in X-Hub-Signature header.
+ * Both times we check additional token generated when subscribtion is created.
+ * It means that callback page for realtime updates has the following address:
+ * http://metrocatch.com/metrocatch/real-time-feed/facebook?token=TOKEN.
+ */
+function metrocatch_conversation_facebook_updates_access() {
+  $secret = variable_get('metrocatch_conversation_facebook_secret', '');
+  $valid_token = variable_get('metrocatch_conversation_facebook_subscribtions_token', '');
+  if (!isset($_GET['token']) || $_GET['token'] != $valid_token) {
+    return FALSE;
+  }
+  switch ($_SERVER['REQUEST_METHOD']) {
+    case 'GET':
+      if ($_GET['hub_mode'] == 'subscribe' && $_GET['hub_verify_token'] == $secret) {
+        return TRUE;
+      }
+      break;
+    case 'POST':
+      $headers = apache_request_headers();
+      $input = file_get_contents('php://input');
+      if (isset($headers['X-Hub-Signature'])) {
+        list($method, $signature) = explode('=', trim($headers['X-Hub-Signature']));
+        if (isset($method) && isset($signature)) {
+          $valid = hash_hmac('sha1', $input, $secret);
+          if ($signature == $valid) {
+            return TRUE;
+          }
+        }
+      }
+      break;
+  }
+  return FALSE;
+}
+
+/**
+ * Access callback for the twitter final authorization page.
+ *
+ * Path: metrocatch-conversation/feed/twitter/finalize
+ *
+ * On this step we have should compare provided request_token with the one stored in session.
+ *
+ * @see _metrocatch_conversation_get_twitter_login_url()
+ */
+function _metrocatch_conversation_add_twitter_feed_finalize_access() {
+  global $user;
+  if ($user->uid && isset($_SESSION['metrocatch_conversation_twitter_oauth'])) {
+    if (isset($_GET['denied'])) {
+      // User denies application:
+      return (trim($_GET['denied']) == trim($_SESSION['metrocatch_conversation_twitter_oauth']['value']));
+    }
+    elseif (isset($_GET['oauth_token'])) {
+      return (trim($_GET['oauth_token']) == trim($_SESSION['metrocatch_conversation_twitter_oauth']['value']));
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Get user's conversation entries
+ *
+ * @param int $max
+ *   maximum number of entries to fetch
+ * @param int $offset
+ *   number of entries to skip
+ * @param object $account
+ *   account, which conversation records to load
+ * @param bool $only_own
+ *   select all posts, or only $account's
+ * @param bool $counr
+ *   if TRUE, function returns number of matched records
+ *
+ * @return array
+ *   array of nodes or total number of records
+ */
+function metrocatch_conversation_get_entries($account, $only_own = TRUE, $count = FALSE, $max = 0, $offset = 0) {
+  global $user;
+  if ($user->uid == $account->uid) {
+    $only_own = FALSE;
+  }
+  if ($count) {
+    $query = "SELECT COUNT(ctce.nid)\n";
+  }
+  else {
+    $query = "SELECT ctce.nid\n";
+  }
+  $query .=
+    "FROM {content_type_conversation_entry} ctce
+    INNER JOIN {node} n ON n.vid = ctce.vid
+    WHERE (
+      ctce.field_conversation_entry_conv_id_uid = %d
+        OR ctce.field_conversation_entry_conv_id_uid IS NULL
+      )
+      AND n.created > %d";
+  $args = array($account->uid, $account->created);
+  if ($only_own) {
+    // Display only author's and current user's posts.
+    $query .= ' AND (n.uid = %d OR n.uid = %d)';
+    $args[] = $account->uid;
+    $args[] = $user->uid;
+  }
+  if ($count) {
+    return db_result(db_query($query, $args));
+  }
+  $query .= " ORDER BY n.created DESC";
+  $rows = db_query_range($query, $args, $offset, $max);
+  $entries = array();
+  while ($nid = db_result($rows)) {
+    $entries[] = node_load($nid);
+  }
+  return $entries;
+}
+
+/**
+ * Get number of conversation nodes created on user's wall after specified time.
+ */
+function metrocatch_conversation_get_node_offset($uid, $time) {
+  $entries_per_page = variable_get('metrocatch_conversation_posts_more_number', 8);
+  if ($entries_per_page == 0) {
+    return 0;
+  }
+  $offset = db_result(db_query(
+    "SELECT COUNT(n.nid) FROM {node} n
+    INNER JOIN {content_type_conversation_entry} cck ON cck.vid = n.vid
+    WHERE n.type = 'conversation_entry' AND n.status <> 0 AND n.created > %d
+    AND (cck.field_conversation_entry_conv_id_uid = %d OR field_conversation_entry_conv_id_uid IS NULL)", $time, $uid));
+  return floor($offset / $entries_per_page);
+}
+
+/**
+ * Get wall owner by provided conversation entry ID.
+ */
+function metrocatch_conversation_get_wall_owner($nid) {
+  return db_result(db_query_range('SELECT field_conversation_entry_conv_id_uid FROM {content_type_conversation_entry} WHERE nid = %d ORDER BY vid DESC', $nid, 0, 1));
+}
+
+/**
+ * @} End of "name api".
+ */
+
+/**
+ * @name helper Helper functions.
+ * @{
+ */
+
+/**
+ * Access callback for 'metrocatch-conversation-remove-entry/%node' path
+ *
+ * @param object $node
+ *   conversation_entry node object
+ */
+function metrocatch_conversation_delete_entry_access($node) {
+  global $user;
+  return ($node->type == 'conversation_entry' && node_access('delete', $node));
+}
+
+/**
+ * Access callback: checks if user has permissions to view comments for a specified conversation entry.
+ *
+ * Path: ajax-metrocatch-conversation-get-comments
+ */
+function metrocatch_conversation_ajax_get_comments_access() {
+  global $user;
+  if (user_access('access comments') && is_numeric($_POST['nid']) && ($node = node_load($_POST['nid'])) && $node->type == 'conversation_entry') {
+    $types = metrocatch_connect_get_active_connection_types();
+    $types[] = 'pending';
+    $wall_owner = metrocatch_conversation_get_wall_owner($node->nid);
+    // If user views his own wall or a wall of connected user:
+    return (($wall_owner && $user->uid == $wall_owner) || metrocatch_connect_users_are_connected($wall_owner, $user->uid, $types));
+  }
+  return FALSE;
+}
+
+/**
+ * Custom submit handler for comment form
+ * (we need to use it to override standart redirect of the comment form)
+ */
+function metrocatch_conversation_comment_form_submit($form, &$form_state) {
+  $form_state['redirect'] = array(drupal_get_path_alias($_GET['q']), 'expand='. $form['nid']['#value']);
+}
+
+/**
+ * "Delete conversation entry" form callback
+ */
+function metrocatch_conversation_delete_entry_form($form_state, $nid) {
+  $ret_path = isset($_GET['destination']) ? $_GET['destination'] : $_GET['q'];
+  if (strpos($ret_path, '?') !== FALSE) {
+    $parts = explode('?', $ret_path);
+    $ret_path = array(
+      'path' => $parts[0],
+      'query' => $parts[1],
+    );
+  }
+  $form = array('nid' => array('#type' => 'value', '#value' => $nid));
+  drupal_add_js(drupal_get_path('module', 'metrocatch_conversation') .'/metrocatch_conversation.js');
+  return confirm_form($form, t('Are you sure that you want to delete this mesage?'), $ret_path, NULL, t('Delete'));
+}
+
+/**
+ * Submit handler for "Delete conversation entry" form
+ */
+function metrocatch_conversation_delete_entry_form_submit($form, $form_state) {
+  // node_delete() will check user permissions, so we don't need validate form.
+  node_delete($form_state['values']['nid']);
+  if (isset($_GET['popup_forms_num'])) {
+    unset($_SESSION['messages']['status']); // Pop off message 'node has been deleted'.
+  }
+}
+
+/**
+ * Saves feed in database.
+ *
+ * @param $uid
+ *   The Drupal ID of the user.
+ * @param $ext_uid
+ *   The external ID of the user.
+ * @param $provider
+ *   The provider ID, e.g. 'facebook' or 'twitter'.
+ * @param $token
+ *   oAuth access token
+ * @param $token_secret
+ * 	 oAuth token secret. Is used only for an ancient Twitter oAuth 1.0 authentication.
+ * @param $last_update
+ *   (optional) UNIX timestamp of when we have checked updates for this user.
+ */
+function metrocatch_conversation_add_feed($uid, $ext_uid, $provider, $token, $token_secret = NULL, $last_update = 0) {
+  $record = array(
+    'uid' => $uid,
+    'ext_uid' => $ext_uid,
+    'provider' => $provider,
+    'access_token' => $token,
+    'token_secret' => $token_secret,
+    'last_update' => $last_update,
+  );
+  if ($other_users_feed = metrocatch_conversation_get_feed($ext_uid, $provider)) {
+    // If there is feed for this external uid, remove it:
+    metrocatch_conversation_remove_feed($other_users_feed->uid, $provider);
+  }
+  $status = drupal_write_record('metrocatch_conversation_social_integration', $record);
+  if ($provider == 'twitter') {
+    $queue = array(
+      'uid' => $uid,
+      'last_update' => time(),
+    );
+    drupal_write_record('metrocatch_conversation_twitter_queue', $queue);
+  }
+  module_invoke_all('metrocatch_conversation_feed_added', $record);
+  return $record;
+}
+
+/**
+ * Removes user feed from provider.
+ *
+ * @param $uid
+ *   The UID of the user whose feed we are removing.
+ * @param $provider
+ *   The ID of provider: 'facebook' or 'twitter'.
+ *
+ * @see metrocatch_conversation_remove_facebook_feed_page()
+ * @see metrocatch_conversation_remove_twitter_feed_page()
+ */
+function metrocatch_conversation_remove_feed($uid, $provider) {
+  $status = FALSE;
+  $feed_data = metrocatch_conversation_get_feed($uid, $provider, 'uid');
+  if ($provider == 'facebook') {
+    $facebook = metrocatch_conversation_facebook_init();
+    $params = array(
+      'access_token' => $facebook->getAppId() .'|'. $facebook->getAppSecret(),
+    );
+    try {
+      // Remove application from user's Facebook.
+      $facebook->api("{$feed_data->ext_uid}/permissions", 'DELETE', $params);
+    }
+    catch (FacebookApiException $e) {
+      watchdog('debug', 'Error occurred while deleting user\'s Facebook feed: %message', array('%message' => $e->getMessage()), WATCHDOG_ERROR);
+      drupal_set_message($e->getMessage(), 'error');
+    }
+    $facebook->destroySession();
+  }
+  elseif ($provider == 'twitter') {
+    db_query('DELETE FROM {metrocatch_conversation_twitter_queue} WHERE uid = %d', $uid);
+  }
+  db_query("DELETE FROM {metrocatch_conversation_social_integration} WHERE uid = %d AND provider = '%s'", $uid, $provider);
+}
+
+/**
+ * Loads feed from database.
+ *
+ * @param $uid
+ *   Drupal or Provider user ID (depends on $key param).
+ * @param $provider
+ *   Provider ID.
+ * @param $key
+ *   (optional) Key to search for ('uid' or 'ext_uid'). Default 'ext_uid'.
+ */
+function metrocatch_conversation_get_feed($uid, $provider, $key = 'ext_uid') {
+  static $cache = array();
+  if (!isset($cache[$provider][$key][$uid])) {
+    $cache[$provider][$key][$uid] = db_fetch_object(db_query("SELECT * FROM {metrocatch_conversation_social_integration} WHERE %s = %d AND provider = '%s'", $key, $uid, $provider));
+  }
+  return $cache[$provider][$key][$uid];
+}
+
+/**
+ * Loads user posts from Facebook wall
+ *
+ * @param $fbuid
+ *   The ID of the user in Facebook.
+ * @param $connections
+ *   An associative array with Drupal IDs of user connections in keys and their Facebook IDs in values.
+ * @param $time
+ *   UNIX timestamp of the earliest update. It means we should get all posts older than it.
+ * @param $feed_data
+ *   StdClass object representing user's feed data, such as his Drupal ID, oAuth access token, etc.
+ *
+ * @return
+ *   An array of user's records on his Facebook wall. Each post contain following keys:
+ *   - post_id: The ID of the Facebook post.
+ *   - actor_id: The Facebook ID of the user who has created this post.
+ *   - message: The text of this post.
+ *   - app_data: Some additional data if this post was created via Facebook application.
+ *   - attachment: An array representing post attachments, may contain following keys:
+ *     - name: a string containing the name of this attachment.
+ *     - caption: a string containing the caption of this attachment.
+ *     - description: a string containing the description of this attachment.
+ *     - media: an array representing media attachment, may contain following keys:
+ *       - src: a string containing source URL of media image.
+ *       - href: a string containing URL linked to this media file.
+ *       - alt: a string containing alternative text if image can't be loaded.
+ *   - created_time: UNIX timestamp of when this post was created.
+ *   - permalink: URL of link to this post on Facebook.
+ *
+ * @see _metrocatch_conversation_update_facebook_feed()
+ * @link http://developers.facebook.com/docs/reference/fql/stream/
+ */
+function metrocatch_conversation_facebook_get_posts($fbuid, $connections, $time, $feed_data) {
+  $posts = array();
+  $facebook = metrocatch_conversation_facebook_init();
+  $facebook->setAccessToken($feed_data->access_token);
+  $params = array(
+    'access_token' => $feed_data->access_token,
+    'q' =>
+      "SELECT post_id, actor_id, message, app_data, attachment, created_time, privacy, permalink
+      FROM stream
+      WHERE source_id = {$fbuid} AND actor_id = {$fbuid} AND created_time >= {$time}",
+  );
+  try {
+    $ret = $facebook->api('fql', 'GET', $params);
+    $own_posts = $ret['data'];
+    $params = array(
+      'access_token' => $feed_data->access_token,
+      'q' =>
+      "SELECT post_id, actor_id, message, app_data, attachment, created_time, privacy, permalink
+      FROM stream
+      WHERE source_id = {$fbuid} AND created_time >= {$time} AND actor_id IN(". implode(',', $connections) .")",
+    );
+    $ret = $facebook->api('fql', 'GET', $params);
+    $connections_posts = $ret['data'];
+    $all_posts = array_merge($own_posts, $connections_posts);
+    foreach ($all_posts as $id => $post) {
+      // Filter posts by privacy settings. We can't do it in FQL query.
+      if (!empty($post['privacy']['value']) && $post['privacy']['value'] != 'EVERYONE') {
+        unset($all_posts[$id]);
+      }
+    }
+    return $all_posts;
+  }
+  catch (FacebookApiException $e) {
+    watchdog('debug', 'Error occurred while gettings new posts from Facebook for %fbuid: %message', array('%message' => $e->getMessage(), '%fbuid' => $fbuid), WATCHDOG_ERROR);
+  }
+
+  return array();
+}
+
+/**
+ * Prepares Drupal node from Facebook post.
+ *
+ * @param $post
+ *   An associative array with following keys:
+ *   - post_id: The ID of the Facebook post.
+ *   - actor_id: The Facebook ID of the user who has created this post.
+ *   - message: The text of this post.
+ *   - app_data: Some additional data if this post was created via Facebook application.
+ *   - attachment: An array representing post attachments
+ *   - created_time: UNIX timestamp of when this post was created.
+ *   - permalink: URL of link to this post on Facebook.
+ * @param $connections
+ *  An associative array with Drupal IDs of user connections in keys and their Facebook IDs in values.
+ * @param $feed_data
+ *  StdClass object representing user's feed data, such as his Drupal ID, oAuth access token, etc.
+ * @return
+ *   StdClass of node prepared for saving in database,
+ *   or FALSE if there is no data to fetch (empty psot message and no attachments).
+ */
+function _metrocatch_conversation_prepare_node_from_facebook_post($post, $connections, $feed_data) {
+  $uid = array_search($post['actor_id'], $connections); // Pos is made by user's connection
+  if (!$uid) {
+    $uid = $feed_data->uid; // Post is made by aurthor
+  }
+  // json_decode sets float type for actor_id, convert it into string:
+  $post['actor_id'] = number_format($post['actor_id'], 0, '.', '');
+  if (empty($post['message']) && !isset($post['attachment']['media'])) {
+    // No data to fetch.
+    return FALSE;
+  }
+
+  return (object) array(
+    'type' => 'conversation_entry',
+    'title' => t('Conversation entry'),
+    'uid' => $uid,
+    'body' => theme('metrocatch_conversation_facebook_post', $post),
+    'format' => 2,
+    'field_conversation_entry_conv_id' => array(
+      array(
+        'uid' => $feed_data->uid,
+      ),
+    ),
+    'created' => $post['created_time'],
+    'comment' => variable_get('comment_conversation_entry', COMMENT_NODE_READ_WRITE),
+    'status' => 1,
+  );
+}
+
+/**
+ * Prepares Drupal node from Twitter post.
+ *
+ * @param $tweet
+ *   An associative array representing user's tweet with following structure:
+ *   - created_at: string of when tweet was created.
+ *   - entries: an array of tweet entries, such as shorten links or attached media files.
+ * @param $uid
+ *   The Drupal UID of user who is author of this tweet.
+ *
+ * @link https://dev.twitter.com/docs/api/1/get/statuses/user_timeline
+ */
+function _metrocatch_conversation_prepare_node_from_tweet($tweet, $uid) {
+  return (object) array(
+    'type' => 'conversation_entry',
+    'title' => t('Conversation entry'),
+    'uid' => $uid,
+    'body' => theme('metrocatch_conversation_twitter_tweet', $tweet),
+    'format' => 2,
+    'field_conversation_entry_conv_id' => array(
+      array(
+        'uid' => $uid,
+      ),
+    ),
+    'created' =>  strtotime($tweet['created_at']),
+    'comment' => variable_get('comment_conversation_entry', COMMENT_NODE_READ_WRITE),
+    'status' => 1,
+  );
+}
+
+/**
+ * Additional submit handler for profile node form
+ */
+function metrocatch_conversation_profile_node_form_submit($form, $form_state) {
+  // save setting
+  $flag = flag_get_flag('metrocatch_conversation_private');
+  if ($form_state['values']['metrocatch_conversation_flag']) {
+    $flag->flag('flag', $form['uid']['#value']);
+  }
+  else {
+    $flag->flag('unflag', $form['uid']['#value']);
+  }
+}
+
+/**
+ * Get an instance of Facebook class.
+ *
+ * On first call we create an instance of Facebook class and then store it
+ * in static variable.
+ */
+function metrocatch_conversation_facebook_init() {
+  static $facebook;
+  if (empty($facebook)) {
+    include_once 'sites/all/libraries/facebook-php-sdk/facebook.php';
+    $params = array(
+      'appId' => variable_get('metrocatch_conversation_facebook_app_id', ''),
+      'secret' => variable_get('metrocatch_conversation_facebook_secret', ''),
+    );
+    $facebook = new Facebook($params);
+  }
+  return $facebook;
+}
+
+/**
+ * Get an instance of Twitter class.
+ *
+ * On first call we create an instance of Twitter class and then store it
+ * in static variable.
+ */
+function metrocatch_conversation_twitter_init() {
+  static $twitter;
+  if (empty($twitter)) {
+    include_once 'sites/all/libraries/twitter-php-sdk/twitter.php';
+    $key = variable_get('metrocatch_conversation_twitter_app_id', '');
+    $secret = variable_get('metrocatch_conversation_twitter_secret', '');
+    $twitter = new Twitter($key, $secret);
+  }
+  return $twitter;
+}
+
+/**
+ * Return Facebook login url
+ */
+function _metrocatch_conversation_get_facebook_login_url() {
+  $facebook = metrocatch_conversation_facebook_init();
+  $params = array(
+    'redirect_uri' => url('metrocatch-conversation/feed/facebook/' . $_GET['q'], array('absolute' => TRUE)),
+    'scope' => 'read_stream,offline_access',
+  );
+  return $facebook->getLoginUrl($params);
+}
+
+/**
+ * Generate login url for Twitter authorization page.
+ *
+ * Here we request Twitter for request_token, store it in session and return login url
+ * with provided request token.
+ *
+ * @see metrocatch_conversation_add_twitter_feed_page()
+ */
+function _metrocatch_conversation_get_twitter_login_url($redirect) {
+  $twitter = metrocatch_conversation_twitter_init();
+  $callback_url = '';
+  try {
+    $ret = $twitter->oAuthRequestToken($callback_url);
+    if (isset($ret['oauth_token'])) {
+      $_SESSION['metrocatch_conversation_twitter_oauth'] = array(
+        'value' => $ret['oauth_token'],
+        'secret' => $ret['oauth_token_secret'],
+        'verifier' => $ret['oauth_verifier'],
+        'redirect' => $redirect,
+      );
+      return Twitter::SECURE_API_URL .'/oauth/authorize?oauth_token='. $ret['oauth_token'];
+    }
+  }
+  catch (TwitterException $e) {
+    drupal_set_message($e->getMessage(), 'error');
+    watchdog('debug', 'Error occurred while getting Twitter request token: @message', array('@message' => $e->getMessage()));
+  }
+  return FALSE;
+}
+
+/**
+ * Get a list of Facebook user IDs for provided list of Drupal user IDs.
+ *
+ * @param $uids
+ *   An array of Drupal user IDs.
+ *
+ * @return
+ *   An associative array with Drupal UIDs of user connections in keys
+ *   and their Facebook UIDs in values.
+ *
+ * @see _metrocatch_conversation_update_facebook_feed()
+ */
+function _metrocatch_conversation_get_facebook_users_map($uids) {
+  $map = array();
+  if (!empty($uids)) {
+    $result = db_query("SELECT uid, ext_uid FROM {metrocatch_conversation_social_integration} WHERE provider = 'facebook' AND uid IN (". db_placeholders($uids) .")", $uids);
+    while ($record = db_fetch_object($result)) {
+      $map[$record->uid] = $record->ext_uid;
+    }
+  }
+  return $map;
+}
+
+/**
+ * Handles Facebook real-time updates.
+ *
+ * Here we get latest update queue from database (which was previously saved
+ * on real-time updates callback page) and save it static variable.
+ *
+ * Then we split queue in little pieces and process each piece in one call.
+ * Whene each piece is processed we remove it from queue and update queue in database.
+ * When all pieces are processed we remove queue from database and wait for other call.
+ */
+function _metrocatch_conversation_update_facebook_feed() {
+  static $queue = array();
+  $length = 10;
+  if (empty($queue)) {
+    // Get the latest queue if available:
+    $queue = db_fetch_object(db_query_range('SELECT * FROM {metrocatch_conversation_facebook_queue} ORDER BY qid ASC', 0, 1));
+    if ($queue === FALSE) {
+      return; // Nothing to do, waiting for another call.
+    }
+    $queue->data = unserialize($queue->data);
+  }
+  $updates = array();
+  while ($length-- && !empty($queue->data)) {
+    $current = current($queue->data);
+    $key = key($queue->data);
+    $updates[$key] = $current;
+    array_shift($queue->data);
+  }
+  $fb_uids = array_keys($updates);
+  $users_feeds_data = array();
+  $result = db_query("SELECT * FROM {metrocatch_conversation_social_integration} WHERE provider = 'facebook' AND ext_uid IN (". db_placeholders($fb_uids) .")", $fb_uids);
+  while ($feed_data = db_fetch_object($result)) {
+    $users_feeds_data[$feed_data->ext_uid] = $feed_data;
+    if ($updates[$feed_data->ext_uid] < $feed_data->last_update) {
+      // Unset update if it is already done.
+      unset($updates[$feed_data->ext_uid]);
+    }
+  }
+  $fb_uids_enabled = array_keys($users_feeds_data);
+  // Unset updates for users who have disabled theirs Facebook feeds:
+  foreach (array_diff($fb_uids, $fb_uids_enabled) as $fb_uid_disabled) {
+    unset($updates[$fb_uid_disabled]);
+  }
+  foreach ($updates as $fbuid => $update_time) {
+    $connections = metrocatch_connect_load_user_connection_uids($users_feeds_data[$fbuid]->uid);
+    $usermap = _metrocatch_conversation_get_facebook_users_map($connections);
+    $new_posts = metrocatch_conversation_facebook_get_posts($fbuid, $usermap, $update_time, $users_feeds_data[$fbuid]);
+    $newest_post = FALSE;
+    foreach ($new_posts as $post) {
+      if (!$newest_post || $newest_post['created_time'] < $post['created_time']) {
+        $newest_post = $post;
+      }
+      if ($node = _metrocatch_conversation_prepare_node_from_facebook_post($post, $usermap, $users_feeds_data[$fbuid])) {
+        node_save($node);
+      }
+    }
+    if ($newest_post) {
+      // Update the last update timestamp:
+      db_query("UPDATE {metrocatch_conversation_social_integration} SET last_update = %d WHERE provider = 'facebook' AND uid = %d", $newest_post['created_time'], $users_feeds_data[$fbuid]->uid);
+    }
+  }
+  if (!empty($queue->data)) {
+    // Update queue in database:
+    drupal_write_record('metrocatch_conversation_facebook_queue', $queue, array('qid'));
+  }
+  else {
+    // We've finished this queue:
+    db_query('DELETE FROM {metrocatch_conversation_facebook_queue} WHERE qid = %d', $queue->qid);
+    $queue = array();
+  }
+}
+
+/**
+ * Update user's twitter feeds.
+ *
+ * Here we get first 10 users who have added twitter feed and whose last update
+ * was later then (current time - update window).
+ * For each user we try to get new tweets using his/her last tweet ID which is stored in
+ * last_update field of {metrocatch_conversation_social_integration} table.
+ * If there are any new tweets we prepare them for saving in database as Drupal node.
+ * And finally we update latest tweet ID and update time in database.
+ */
+function _metrocatch_conversation_update_twitter_feed() {
+  $twitter = metrocatch_conversation_twitter_init();
+  $limit = 10;
+  $update_window = 120; // 2 mins
+  $now = time();
+  $last_update = $now - $update_window;
+  $result = db_query_range(
+    "SELECT f.* FROM {metrocatch_conversation_social_integration} f
+    INNER JOIN {metrocatch_conversation_twitter_queue} q ON q.uid = f.uid
+    WHERE f.provider = 'twitter' AND q.last_update < %d
+    ORDER BY q.last_update ASC", $last_update, 0, $limit);
+  while ($feed = db_fetch_object($result)) {
+    $twitter->setOAuthToken($feed->access_token);
+    $twitter->setOAuthTokenSecret($feed->token_secret);
+    try {
+      // Get user tweets created after last update.
+      $tweets = $twitter->statusesUserTimeline($feed->ext_uid, NULL, $feed->last_update, NULL, NULL, TRUE, FALSE, TRUE);
+      watchdog('debug', 'twitter feed data:'. print_r($feed, 1));
+      watchdog('debug', 'tweets received:'. print_r($tweets, 1));
+      if (!empty($tweets)) {
+        foreach ($tweets as $tweet) {
+          $node = _metrocatch_conversation_prepare_node_from_tweet($tweet, $feed->uid);
+          node_save($node);
+          if (!isset($newest_tweet) || $newest_tweet['id'] < $tweet['id']) {
+            $newest_tweet = $tweet;
+          }
+        }
+      }
+      if (isset($newest_tweet)) {
+        // save newest tweet ID.
+        db_query("UPDATE {metrocatch_conversation_social_integration} SET last_update = '%s' WHERE uid = %d AND provider = 'twitter'", $newest_tweet['id'], $feed->uid);
+      }
+      // set last_update to current timestamp.
+      db_query("UPDATE {metrocatch_conversation_twitter_queue} SET last_update = %d WHERE uid = %d", $now, $feed->uid);
+    }
+    catch (TwitterException $e) {
+      watchdog('debug', 'Error occurred while gettings @uid\'s timeline: @message', array('@uid' => $feed->uid, '@message' => $e->getMessage()), WATCHDOG_ERROR);
+    }
+  }
+  // we have finished with $limit users, waiting for another call.
+}
+
+/**
+ * Helper function for AHAH form submission.
+ *
+ * Gets and submits cached form.
+ *
+ * @see metrocatch_conversation_ajax_comment_submit_page()
+ */
+function metrocatch_conversation_ahah_helper() {
+  $form_state = array('storage' => NULL, 'submitted' => FALSE);
+  $form_build_id = $_POST['form_build_id'];
+  $form = form_get_cache($form_build_id, $form_state);
+  if (!$form) {
+    return FALSE;
+  }
+  $args = $form['#parameters'];
+  $form_id = array_shift($args);
+  $form_state['post'] = $form['#post'] = $_POST;
+  $form['#programmed'] = $form['#redirect'] = FALSE;
+  drupal_process_form($form_id, $form, $form_state);
+  $form = drupal_rebuild_form($form_id, $form_state, $args, $form_build_id);
+  return $form;
+}
+
+/**
+ * Subscribes Facebook application on user feeds updates.
+ */
+function _metrocatch_conversation_add_subscription() {
+  $token = md5(uniqid(mt_rand(), TRUE));
+  variable_set('metrocatch_conversation_facebook_subscribtions_token', $token);
+  $facebook = metrocatch_conversation_facebook_init();
+  $params = array(
+    'object' => 'user',
+    'callback_url' => url('metrocatch/real-time-feed/facebook', array('absolute' => TRUE, 'query' => array('token' => $token))),
+    'fields' => 'feed,status,link',
+    'verify_token' => $facebook->getAppSecret(),
+    'access_token' => $facebook->getAppId() .'|'. $facebook->getAppSecret(), // this method must be called with App access token
+    'active' => 'true',
+  );
+  try {
+    $ret = $facebook->api($facebook->getAppId() . '/subscriptions', 'POST', $params);
+    drupal_set_message(t('Facebook subscription has been added successfully.'));
+  }
+  catch (FacebookApiException $e) {
+    drupal_set_message($e->getMessage(), 'error');
+  }
+  return array();
+}
+
+/**
+ * Helper function to format username.
+ */
+function metrocatch_conversation_format_username($object) {
+  if ($object->uid && $object->name) {
+    // Shorten the name when it is too long or it will break many tables.
+    if (drupal_strlen($object->name) > 20) {
+      $name = drupal_substr($object->name, 0, 15) .'...';
+    }
+    else {
+      $name = $object->name;
+    }
+
+    if (user_access('access user profiles')) {
+      $output = l($name, 'user/'. $object->uid, array('attributes' => array('title' => t('View user profile.'))));
+    }
+    else {
+      $output = check_plain($name);
+    }
+  }
+  else {
+    $output = t('Deleted user');
+  }
+  return $output;
+}
+
+/**
+ * @} End of "name helper".
+ */
+
+
+/**
+ * @name theme Theme implementations.
+ * @{
+ */
+
+/**
+ * Preprocess function for 'metrocatch_conversation_page'
+ */
+function template_preprocess_metrocatch_conversation_page(&$vars) {
+  $dummy_node = (object) array(
+    'type' => 'conversation_entry',
+  );
+  $settings = array(
+    'metrocatch_conversation' => array(
+      'comments_order' => _comment_get_display_setting('sort', $dummy_node)
+    ),
+  );
+  $path = drupal_get_path('module', 'metrocatch_conversation');
+  drupal_add_css($path .'/metrocatch_conversation.css');
+  popup_forms_parent_js();
+  drupal_add_js('misc/jquery.form.js');
+  drupal_add_js($path .'/metrocatch_conversation.js');
+  drupal_add_js($settings, 'setting');
+  drupal_add_js('if (opener && !!opener.location) { opener.location.reload(); window.close();}', 'inline');
+  $vars['account'] = $account = user_load($vars['owner']);
+  $vars['records'] = theme('metrocatch_conversation_entries', $vars['records']);
+  $vars['more_link'] = theme('metrocatch_conversation_view_more_link', $account, isset($vars['skip']) ? $vars['skip'] : 0);
+  $vars['add_new_entry_form'] = drupal_get_form('metrocatch_converstion_new_entry_form', $vars['owner']);
+  if (metrocatch_conversation_add_feed_access('facebook', $account)) {
+    $vars['feed_facebook'] = l(t('Add Facebook Feed'), _metrocatch_conversation_get_facebook_login_url(), array('attributes' => array('id' => 'feed-facebook')));
+  }
+  elseif (_metrocatch_conversation_remove_feed_access('facebook', $account)) {
+    $vars['feed_facebook'] = l(t('Remove Facebook Feed'), 'metrocatch-conversation/unfeed/facebook', array('query' => drupal_get_destination(), 'attributes' => array('id' => 'unfeed-facebook')));
+  }
+  if (metrocatch_conversation_add_feed_access('twitter', $account)) {
+    $vars['feed_twitter'] = l(t('Add Twitter Feed'), 'metrocatch-conversation/feed/twitter', array('query' => drupal_get_destination(), 'attributes' => array('id' => 'feed-twitter')));
+  }
+  elseif (_metrocatch_conversation_remove_feed_access('twitter', $account)) {
+    $vars['feed_twitter'] = l(t('Remove Twitter Feed'), 'metrocatch-conversation/unfeed/twitter', array('query' => drupal_get_destination(), 'attributes' => array('id' => 'unfeed-twitter')));
+  }
+  $vars['profile_teaser'] = metrocatch_connect_view_profile('teaser', $account, array('show_more_link' => TRUE));
+}
+
+/**
+ * Preprocess function for 'metrocatch_conversation_entry'
+ */
+function template_preprocess_metrocatch_conversation_entry(&$vars) {
+  $node = $vars['node'];
+  $vars['body'] = node_view($node, FALSE, FALSE, FALSE);
+  $author = user_load($node->uid);
+  $vars['author'] = theme('metrocatch_conversation_entry_author', $author);
+  if (isset($node->field_conversation_entry_conv_id[0]['uid'])) {
+    $vars['comments'] = (isset($_GET['expand']) && $_GET['expand'] == $node->nid) ? comment_render($node) : '<div class="comment_wrapper"></div>';
+    $vars['entry_links'] = theme('metrocatch_conversation_entry_links', $node);
+    $vars['comment_form'] = drupal_get_form('comment_form_'. $node->nid, array('nid' => $node->nid));
+  }
+}
+
+/**
+ * Theme handler for 'metrocatch_conversation_entry_author'
+ *
+ * @param object $account
+ *   user object of entry's author
+ */
+function theme_metrocatch_conversation_entry_author($account) {
+  $out = '<div class="metrocatch-conversation-entry-author">';
+  $out .= theme('metrocatch_profile_picture', 'metrocatch_conversation_entry_author', $account);
+  $out .= '<div class="username">';
+  $out .= metrocatch_conversation_format_username($account);
+  $out .= '</div>';
+  return $out .'</div>';
+}
+
+/**
+ * Preprocess function for 'node'
+ */
+function metrocatch_conversation_preprocess_node(&$vars) {
+  unset($vars['submitted']);
+}
+
+/**
+ * Theme function for 'metrocatch_conversation_entry_links'
+ */
+function theme_metrocatch_conversation_entry_links($node) {
+  global $user;
+  $out = '<div class="conversation-entry-links">';
+  $links = array();
+  $conversation_owner = $node->field_conversation_entry_conv_id[0]['uid'];
+  if (metrocatch_conversation_delete_entry_access($node)) {
+    $links[] = l(t('Remove'), 'metrocatch-conversation-remove-entry/'. $node->nid, array('attributes' => array('class' => 'conversation-entry-remove-link'), 'query' => drupal_get_destination()));
+  }
+  $links[] = '<a href="#comment-form-'. $node->nid .'" class="conversation-entry-comment-link">'. t('Comment') .'</a>';
+  $links[] = '<a href="#comments-for-'. $node->nid .'" class="conversation-entry-toggle-comments-link">'. t('Show or Hide Comments (@comment_count)', array('@comment_count' => $node->comment_count)) .'</a>';
+  $out .= implode(' | ', $links);
+  return $out .'</div>';
+}
+
+/**
+ * Preprocess function for 'comment'
+ */
+function metrocatch_conversation_preprocess_comment(&$vars) {
+  if ($vars['node']->type == 'conversation_entry') {
+    $author = user_load($vars['comment']->uid);
+    $pic_path = (!empty($author->picture) ? $author->picture : variable_get('user_picture_default', ''));
+    if ($pic_path) {
+      $vars['picture'] = theme('metrocatch_profile_picture', 'metrocatch_conversation_comment', $author);
+    }
+    if (!$vars['comment']->uid || !$author) {
+      $vars['author'] = metrocatch_conversation_format_username($account);
+    }
+  }
+}
+
+/**
+ * Theme handler for 'metrocatch_conversation_entries'.
+ *
+ * @param array $entries
+ *   array of contersation_entry nodes
+ */
+function theme_metrocatch_conversation_entries($entries) {
+  $out = '';
+  // theme all conversation entries
+  foreach ($entries as $entry) {
+    $out .= theme('metrocatch_conversation_entry', $entry);
+  }
+  return $out;
+}
+
+/**
+ * Theme handler for 'metrocatch_conversation_view_more_link' - "view more" link
+ * on Conversation page
+ *
+ * @param int $skip
+ *   number of entries already displayed
+ * @param object $account
+ *   user, page of which we display
+ */
+function theme_metrocatch_conversation_view_more_link($account, $skip = 0) {
+  $flag = flag_get_flag('metrocatch_conversation_private');
+  $only_own = $flag->is_flagged($account->uid);
+  $total = metrocatch_conversation_get_entries($account, $only_own, TRUE);
+  if ($skip < $total) {
+    return l(t('View more'), 'user/'. $account->uid .'/conversation/'. $skip, array('attributes' => array('class' => 'metrocatch-conversation-more-link')));
+  }
+  return '';
+}
+
+/**
+ * Preprocess function for Facebook post.
+ */
+function template_preprocess_metrocatch_conversation_facebook_post(&$vars) {
+  $post = $vars['post'];
+  watchdog('deubug', '<pre>'. print_r($post, 1));
+  $vars += array(
+    'message' => check_plain($post['message']),
+    'attachment' => !isset($post['attachment']['media']) ? '' : theme('metrocatch_conversation_facebook_post_attachment', $post),
+  );
+}
+
+/**
+ * Themes Facebook post attachments.
+ *
+ * @param $post
+ *   An array of user's records on his Facebook wall. Each post contain following keys:
+ *   - post_id: The ID of the Facebook post.
+ *   - actor_id: The Facebook ID of the user who has created this post.
+ *   - message: The text of this post.
+ *   - app_data: Some additional data if this post was created via Facebook application.
+ *   - attachment: An array representing post attachments, may contain following keys:
+ *     - name: a string containing the name of this attachment.
+ *     - caption: a string containing the caption of this attachment.
+ *     - description: a string containing the description of this attachment.
+ *     - media: an array representing media attachment, may contain following keys:
+ *       - src: a string containing source URL of media image.
+ *       - href: a string containing URL linked to this media file.
+ *       - alt: a string containing alternative text if image can't be loaded.
+ *   - created_time: UNIX timestamp of when this post was created.
+ *   - permalink: URL of link to this post on Facebook.
+ *
+ * @see template_preprocess_metrocatch_conversation_facebook_post()
+ * @link https://developers.facebook.com/docs/guides/attachments/
+ */
+function theme_metrocatch_conversation_facebook_post_attachment($post) {
+  $output = '';
+  $output .= '<div class="facebook-attachment">';
+  $attachment = $post['attachment'];
+  if (!empty($attachment['name'])) {
+    $output .= '<div class="attachment-title">';
+    $attachment['name'] = check_plain($attachment['name']);
+    if (!empty($attachment['href'])) {
+      $output .= l($attachment['name'], $attachment['href'], array('absolute' => TRUE));
+    }
+    else {
+      $output .= $attachment['name'];
+    }
+    $output .= '</div>';
+  }
+  if (!empty($attachment['caption'])) {
+    $output .= '<div class="attachment-caption">';
+    $output .= check_plain($attachment['caption']);
+    $output .= '</div>';
+  }
+  if (!empty($attachment['description'])) {
+    $output .= '<div class="attachment-description">';
+    $output .= check_plain($attachment['description']);
+    $output .= '</div>';
+  }
+  if (!empty($attachment['media'])) {
+    $output .= '<div class="attachment-media-wrapper">';
+    foreach ($attachment['media'] as $media) {
+      $output .= '<div class="attachment-media">';
+      if (isset($media['src'])) {
+        $preview = theme('image', $media['src'], $media['alt'], $media['alt'], array(), FALSE);
+        if (isset($media['href'])) {
+          $output .= l($preview, $media['href'], array('absolute' => TRUE, 'html' => TRUE));
+        }
+        else {
+          $output .= $preview;
+        }
+      }
+      $output .= '</div>';
+    }
+    $output .= '</div>';
+  }
+  $output .= '</div>';
+  return $output;
+}
+
+/**
+ * Returns HTML output of imported tweet.
+ *
+ * @param $tweet
+ *   An array representing this tweet. See caller for detailed structure.
+ *
+ * @see _metrocatch_conversation_prepare_node_from_tweet()
+ */
+function theme_metrocatch_conversation_twitter_tweet($tweet) {
+  if (isset($tweet['entities']['urls'])) {
+    foreach ($tweet['entities']['urls'] as $url) {
+      $tweet['text'] = str_replace($url['url'], l($url['display_url'], $url['expanded_url']), $tweet['text']);
+    }
+  }
+  return check_markup($tweet['text']);
+}
+
+/**
+ * @} End of "name theme".
+ */

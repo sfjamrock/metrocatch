@@ -1,0 +1,55 @@
+
+.manage-gallery {
+  width: 720px;
+}
+
+.gallery-item {
+  position: relative;
+  text-align: center;
+}
+
+.gallery-item > a {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: none;
+  width: 100px;
+  background: #C6C5C5;
+  margin: 0 4px;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.gallery-item.selected:hover a,
+.gallery-item.selected:focus a {
+  display: none;
+}
+
+.gallery-item:hover a,
+.gallery-item:focus a {
+  display: block;
+}
+
+.metrocatch-gallery-dialog.ui-dialog .ui-dialog-content {
+  overflow: hidden;
+}
+
+.metrocatch-gallery-dialog .ui-widget-header {
+   border: 1px solid #aaa; background: none repeat scroll 0 0 #CCCCCC; color: #222;
+}
+
+.metrocatch-gallery-dialog .ui-widget-header .ui-icon,
+.metrocatch-gallery-dialog .ui-state-focus .ui-icon {
+  background-image: url('../images/ui-icons_222222_256x240.png');
+}
+
+.metrocatch-gallery-dialog .ui-state-hover,
+.metrocatch-gallery-dialog .ui-state-focus {
+  background:#fff url('../images/ui-bg_glass_65_ffffff_1x400.png') 50% 50% repeat-x !important;
+  border:1px solid #aaa !important;
+  color:#212121;
+}
+
+h2.gallery-owner {
+  margin-top: 0;
+}

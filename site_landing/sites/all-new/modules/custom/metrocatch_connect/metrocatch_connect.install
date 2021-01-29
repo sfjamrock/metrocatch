@@ -1,0 +1,269 @@
+<?php
+/**
+ * @file
+ * Module install() and uninstall() process functions
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function metrocatch_connect_install() {
+  drupal_install_schema('metrocatch_connect');
+  _metrocatch_connect_create_products();
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function metrocatch_connect_uninstall() {
+  drupal_uninstall_schema('metrocatch_connect');
+  // delete product nodes
+  $nids = array(
+    variable_get('metrocatch_connect_feature_product_nid', 0),
+    variable_get('metrocatch_connect_subfeature_product_nid', 0),
+    variable_get('metrocatch_connect_connect_product_nid', 0),
+  );
+  foreach ($nids as $nid) {
+    if ($nid) {
+      node_delete($nid);
+    }
+  }
+  variable_del('metrocatch_connect_feature_product_nid');
+  variable_del('metrocatch_connect_subfeature_product_nid');
+  variable_del('metrocatch_connect_connect_product_nid');
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function metrocatch_connect_schema() {
+  return array(
+    'metrocatch_connect_catches' => array(
+      'description' => 'Contains "catch of the day" features',
+      'fields' => array(
+        'fid' => array(
+          'description' => 'Feature id, some unique value.',
+          'type' => 'serial',
+          'not null' => TRUE,
+        ),
+        'uid' => array(
+          'description' => '{users}.uid user id.',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'date' => array(
+          'type' => 'datetime',
+          'description' => 'Catch date.',
+          'not null' => TRUE,
+        ),
+        'type' => array(
+          'description' => 'Type of "Catch of the day feature" - feature or subfeature.',
+          'type' => 'varchar',
+          'length' => 16,
+          'not null' => TRUE,
+        ),
+        'sex' => array(
+          'description' => 'Sex, man or woman.',
+          'type' => 'varchar',
+          'length' => 8,
+          'not null' => TRUE,
+        ),
+        'sex_preference' => array(
+          'description' => 'Sexual preferences, men or women.',
+          'type' => 'varchar',
+          'length' => 8,
+          'not null' => TRUE,
+        ),
+      ),
+      'primary key' => array('fid'),
+      'indexes' => array(
+        'uid_date' => array('uid', 'date'),
+        'date' => array('date'),
+        'date_sex_preference' => array('date', 'sex_preference'),
+      ),
+    ),
+    'metrocatch_connect_connection' => array(
+      'description' => 'Contains connections between users.',
+      'fields' => array(
+        'cid' => array(
+          'description' => 'The primary identifier for a connection.',
+          'type' => 'serial',
+          'not null' => TRUE,
+        ),
+        'uid_from' => array(
+          'description' => 'The {users}.uid of user who initiates the connection.',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'uid_to' => array(
+          'description' => 'The {users}.uid of user who receives the invintation.',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'type' => array(
+          'description' => 'The type of this connection. See "constants" section for details.',
+          'type' => 'varchar',
+          'length' => 32,
+          'not null' => TRUE,
+          'default' => ''
+        ),
+        'created' => array(
+          'description' => 'The Unix timestamp when the connection was initiated (target user receives invitation).',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'expiration_time' => array(
+          'description' => 'The Unix timestamp when the connection will expire.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'unsigned' => TRUE,
+          'default' => 0,
+        ),
+        'data' => array(
+          'description' => 'Serialized array of any additional data about this connection.',
+          'type' => 'text',
+          'not null' => FALSE,
+          'default' => NULL,
+          'serialize' => TRUE,
+        ),
+      ),
+      'primary key' => array('cid'),
+      'indexes' => array(
+        'users' => array('uid_from', 'uid_to'),
+        'user' => array('uid_to'),
+        'type' => array(array('type', 4)),
+        'created' => array('created'),
+      ),
+    ),
+    'metrocatch_connect_shares' => array(
+      'description' => 'Stores information about metrocatch shares.',
+      'fields' => array(
+          'cid' => array(
+            'description' => 'The {users}.uid of the shared catch.',
+            'type' => 'int',
+            'unsigned' => TRUE,
+            'not null' => TRUE,
+          ),
+          'uid' => array(
+            'description' => 'The {users}.uid of the user who has shared a catch.',
+            'type' => 'int',
+            'unsigned' => TRUE,
+            'not null' => TRUE,
+          ),
+          'provider' => array(
+            'description' => 'A string identifier of provider: e.g. facebook or twiiter.',
+            'type' => 'varchar',
+            'length' => 16,
+            'not null' => TRUE,
+          ),
+          'timestamp' => array(
+            'description' => 'The Unix timestamp of when this catch was shared.',
+            'type' => 'int',
+            'not null' => TRUE,
+            'default' => 0,
+          ),
+      ),
+      'primary key' => array('cid', 'uid', 'provider'),
+      'indexes' => array(
+        'user_provider_shares' => array('uid', 'provider'),
+        'provider_shares' => array('provider'),
+        'share_time' => array('timestamp'),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function metrocatch_connect_update_6101() {
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('metrocatch_connect', 'metrocatch_connect_connection');
+  db_create_table($ret, 'metrocatch_connect_connection', $schema);
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function metrocatch_connect_update_6102() {
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('metrocatch_connect', 'metrocatch_connect_connection');
+  db_add_field($ret, 'metrocatch_connect_connection', 'expiration_time', $schema['fields']['expiration_time']);
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function metrocatch_connect_update_6103() {
+  node_access_needs_rebuild(TRUE);
+  return array();
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function metrocatch_connect_update_6104() {
+  variable_set('metrocatch_connect_connect_product_nid', metrocatch_uc_create_product('Connect', 'metrocatch_connect', 0.99));
+  return array();
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Introduces new index in {metrocatch_connect_connection} table.
+ */
+function metrocatch_connect_update_6105() {
+  $ret = array();
+  db_add_index($ret, 'metrocatch_connect_connection', 'connection_type', array('uid_from', 'uid_to', array('type', 4)));
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Creates new menu, displays menu block in first sidebar.
+ */
+function metrocatch_connect_update_6106() {
+  $menu = array(
+    'menu_name' => 'menu-metromenu',
+    'title' => t('metrocatch Menu'),
+    'description' => t('Main metrocatch navigation menu.')
+  );
+  db_query("INSERT INTO {menu_custom} (menu_name, title, description) VALUES ('%s', '%s', '%s')", $menu['menu_name'], $menu['title'], $menu['description']);
+  $block = array(
+    'module' => 'menu',
+    'delta' => 'menu-metromenu',
+    'theme' => 'metrocatch_zen',
+    'status' => 1,
+    'region' => 'sidebar_first',
+  );
+  drupal_write_record('blocks', $block);
+  return array();
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Introduces 'metrocatch_connect_shares' table.
+ */
+function metrocatch_connect_update_6107() {
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('metrocatch_connect', 'metrocatch_connect_shares');
+  db_create_table($ret, 'metrocatch_connect_shares', $schema);
+  return $ret;
+}
+
+/**
+ * Create products, required for module
+ */
+function _metrocatch_connect_create_products() {
+  variable_set('metrocatch_connect_feature_product_nid', metrocatch_uc_create_product('Catch Of The Day Feature', 'catch_feature', 9.99));
+  variable_set('metrocatch_connect_subfeature_product_nid', metrocatch_uc_create_product('Catch Of The Day Subfeature', 'catch_subfeature', 5.99));
+  variable_set('metrocatch_connect_connect_product_nid', metrocatch_uc_create_product('Connection', 'metrocatch_connect', 0.99));
+}

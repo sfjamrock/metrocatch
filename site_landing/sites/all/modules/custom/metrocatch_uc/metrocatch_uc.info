@@ -1,0 +1,13 @@
+name = MetroCatch Ubercart
+description = Provides purchasing API to other MetroCatch modules
+version = 6.x-1.1
+package = MetroCatch
+core = 6.x
+dependencies[] = uc_store
+dependencies[] = uc_order
+dependencies[] = uc_payment
+dependencies[] = uc_credit
+dependencies[] = uc_paypal
+dependencies[] = uc_product
+dependencies[] = uc_cart
+dependencies[] = uc_coupon

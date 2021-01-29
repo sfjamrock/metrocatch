@@ -1,0 +1,98 @@
+<?php
+/**
+ * @file
+ * Module install() and uninstall() process functions
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function metrocatch_profile_install() {
+  drupal_install_schema('metrocatch_profile');
+  // We must have weight greater than 'content_profile_registration' module.
+  db_query("UPDATE {system} SET weight = 2 WHERE name = '%s'", 'metrocatch_profile');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function metrocatch_profile_uninstall() {
+  drupal_uninstall_schema('metrocatch_profile');
+  db_query("DELETE FROM {variable} WHERE name LIKE 'metrocatch_profile%%'");
+  cache_clear_all('variables', 'cache');
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function metrocatch_profile_schema() {
+  return array(
+    'metrocatch_profile_field_permissions' => array(
+      'description' => 'Per-user field permissions',
+      'fields' => array(
+        'uid' => array(
+          'type' => 'int',
+          'not null' => TRUE,
+          'unsigned' => TRUE,
+          'description' => 'User id from {users} table',
+        ),
+        'field_name' => array(
+          'type' => 'varchar',
+          'not null' => TRUE,
+          'length' => 32,
+          'description' => 'Field machine name',
+        ),
+        'access' => array(
+          'type' => 'int',
+          'not null' => TRUE,
+          'unsigned' => TRUE,
+          'description' => 'Indicates if this field is private (i.e.' .
+' it shouldn\'t be shown to other users). 1 means this is private field.',
+        ),
+      ),
+      'primary key' => array('uid', 'field_name'),
+      'indexes' => array(
+        'field_name' => array('field_name'),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Increase module weight.
+ */
+function metrocatch_profile_update_6101() {
+  // We must have weight greater than 'content_profile_registration' module.
+  db_query("UPDATE {system} SET weight = 2 WHERE name = '%s'", 'metrocatch_profile');
+  return array();
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Now we added new provacy option for 'birthday' profile field: 'Public to connections'.
+ * Since birthday field is always private now we should change privacy settings
+ * for all users whose birthday is public.
+ * New privacy will be '2' (public to connections).
+ */
+function metrocatch_profile_update_6102() {
+  $result = db_query(
+    "SELECT u.uid FROM {users} u
+    LEFT JOIN {metrocatch_profile_field_permissions} p ON p.uid = u.uid AND p.field_name = 'field_profile_birth_date'
+    WHERE u.uid > 0 AND p.uid IS NULL");
+  $query = 'INSERT INTO {metrocatch_profile_field_permissions} (uid, field_name, access) VALUES ';
+  $args = array();
+  while ($user_with_public_birthday = db_result($result)) {
+    $query .= "(%d, '%s', %d), ";
+    $args = array_merge($args, array(
+      $user_with_public_birthday, 'field_profile_birth_date', 2
+    ));
+  }
+  if (!empty($args)) {
+    $query = rtrim($query, ' ,');
+    db_query($query, $args);
+  }
+  return array();
+}

@@ -1,0 +1,112 @@
+.connection {
+  margin-bottom: 20px;
+  border-bottom: 1px solid #000;
+  clear: both;
+}
+
+.connection.last {
+  border:0;
+}
+
+.user-info {
+  float: left;
+  padding-right: 10px;
+}
+
+.username-wrapper {
+  text-align: center;
+}
+
+
+.profile-fields div {
+  display: inline;
+}
+
+.connection-actions {
+  padding: 10px 0;
+}
+
+.metrocatch-connect-autocomplete {
+  white-space: normal;
+  padding: 3px;
+}
+
+.metrocatch-connect-autocomplete img {
+  display: inline;
+}
+
+.metrocatch-connect-autocomplete span {
+  vertical-align: top;
+}
+
+.connect-login-wrapper .login-wrapper {
+  float: left;
+  padding-right: 30px;
+  width: 55%;
+}
+
+.connect-login-wrapper .create-profile-wrapper {
+  margin-left: 60%;
+}
+
+div.user-profile-connections-count-and-time-left {
+   width: 100%;
+   text-align: center;
+   clear: both;
+}
+
+.user-profile-connections-count {
+  float: left;
+}
+
+#other-catches-block,
+#featured-catches-block {
+  margin-top: 38px;
+}
+
+.catch-preview-wrapper {
+  width: 33%;
+  float: left;
+}
+
+.metrocatch-profile-fields {
+  margin-top: 16px;
+}
+
+.metrocatch-profile-baseinfo .metrocatch-profile-fields div,
+.user-profile-baseinfo div {
+  display: inline;
+}
+
+div.user-profile-wrapper {
+  border: 1px solid #000;
+}
+
+div.user-profile-left-column {
+  float: left;
+}
+
+div.user-profile-right-column {
+  margin-left: 330px;
+}
+
+div.user-profile-connect-link,
+div.user-profile-share-links {
+   text-align: center;
+}
+
+.user-profile-share-links {
+
+}
+
+.user-profile-share-links .metrocatch-share {
+  float: left;
+}
+
+.profile-moreinfo-field-label {
+  background: #A9A9A9;
+}
+
+.metrocatch-profile-user-short-info .metrocatch-profile-connections-count {
+  float: right;
+}

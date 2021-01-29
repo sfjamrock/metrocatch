@@ -1,0 +1,7 @@
+; $Id$
+name = CYD utilities
+description = Code Your Dream utility functions.
+dependencies[] = devel
+package = Custom
+core = 6.x
+version = 6.x-1.9

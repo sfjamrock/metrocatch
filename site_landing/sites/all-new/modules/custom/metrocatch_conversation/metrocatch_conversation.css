@@ -1,0 +1,58 @@
+.metrocatch-conversation-entry {
+  border-bottom: 1px solid black;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+}
+
+.metrocatch-conversation-entry p {
+  margin: 0px;
+}
+
+.metrocatch-conversation-entry-author {
+  float: left;
+  margin: 6px 8px 8px 0px;
+}
+
+.conversation-entry-links {
+  margin: 24px 0px 24px 0px;
+}
+
+/**
+ * Comments are hidden by default.
+ */
+.metrocatch-conversation-entry .comment_wrapper {
+  display: none;
+}
+
+.metrocatch-conversation-entry .comment_wrapper > .comment {
+  margin: 16px 0px 16px 0px;
+}
+
+.metrocatch-conversation-entry > .add-comment-form-wrapper {
+  display: none; /* Comment form is hidden by default */
+}
+
+.metrocatch-conversation-entry .comment > img {
+  float: left;
+  margin-right: 16px;
+}
+
+.metrocatch-conversation-entry .comment {
+  margin: 4px 0px 4px 0px;
+}
+
+.metrocatch-conversation-entry form label,
+.metrocatch-conversation-entry form > div > fieldset,
+.metrocatch-conversation-page ul.tips,
+.metrocatch-conversation-entry form > div > p {
+  display: none;
+}
+
+.metrocatch-conversation-entry > form textarea {
+  width: 100%;
+  padding: 3px;
+}
+
+.add-comment-form-wrapper .ahah-progress-throbber {
+  display: none;
+}

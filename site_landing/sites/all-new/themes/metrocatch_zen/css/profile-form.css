@@ -1,0 +1,148 @@
+
+/**
+ * Hide elements description.
+ */
+form.metrocatch-profile-form .description {
+  display: none;
+}
+
+form.metrocatch-profile-form input[type="text"],
+form.metrocatch-profile-form input[type="password"] {
+  width: 240px;
+}
+
+form.metrocatch-profile-form .metrocatch-profile-favorites input[type="text"] {
+  width: 400px;
+}
+
+form.metrocatch-profile-form select {
+  width: 110px;
+}
+
+form.metrocatch-profile-form .additional-fields select {
+  width: 82px;
+  margin-bottom: 15px;
+}
+
+form.metrocatch-profile-form .additional-fields .profile-indepth-info select {
+  width: auto;
+}
+
+.metrocatch-profile-form-row > div,
+form.metrocatch-profile-form #edit-pass-wrapper > div {
+  float: left;
+  width: 286px;
+}
+
+.additional-fields .metrocatch-profile-form-row > div {
+  float: right;
+  width: auto;
+  position: relative;
+  top: 10px;
+  right: 96px;
+}
+
+.additional-fields .metrocatch-profile-form-row > div:first-child {
+  float: left;
+  width: 415px;
+  margin-right: 0;
+  top: 0;
+  right: 0;
+}
+
+.additional-fields .metrocatch-profile-form-row.field-birthday > div {
+  right: 20px;
+}
+
+.additional-fields .metrocatch-profile-form-row.field-birthday > div:first-child {
+  width: 300px;
+  right: 0;
+}
+
+/**
+ * For inline fields hide all labeles.
+ */ 
+.metrocatch-profile-form-inline label {
+  display: none;
+}
+
+/**
+ * Except for the first one.
+ */
+.metrocatch-profile-form-inline .form-item:first-child label{
+  display: block;
+}
+
+.metrocatch-profile-form-inline > .form-item {
+  display: inline;
+}
+
+form.metrocatch-profile-form #edit-pass-wrapper > div {
+  margin: 0;
+}
+
+form.metrocatch-profile-form #edit-pass-wrapper label {
+  width: 255px;
+}
+
+form.metrocatch-profile-form #edit-pass-wrapper .password-description {
+  width: 100%;
+  margin: 1em 0;
+}
+
+input.password-field,
+input.password-confirm {
+  margin: 0;
+}
+
+.password-confirm,
+.password-strength {
+  display: block;
+  margin: 5px 0 0;
+}
+
+#edit-field-profile-hometown-0-value {
+  width: 155px !important;
+}
+
+#edit-field-profile-current-city-0-value {
+  width: 135px !important;
+}
+
+#edit-field-profile-state-value {
+  width: 100px !important;
+}
+
+.other-fields .form-radios {
+  margin: 13px 0;
+}
+
+.other-fields .form-radios:after {
+  content: ".";
+  display: block;
+  height: 0;
+  clear: both;
+  visibility: hidden;
+}
+
+.other-fields .form-radios > .form-item {
+  float: left;
+  margin-right: 13px;
+}
+
+form.metrocatch-profile-form .additional-fields #edit-field-profile-neighborhood-value {
+  width: 150px;
+}
+
+form.metrocatch-profile-form .additional-fields  #edit-field-profile-neighborhood-state-value {
+  width: 105px;
+}
+
+#edit-field-profile-neighborhood-value-wrapper label {
+  display: none;
+}
+
+.metrocatch-profile-help-text {
+  font-size: 14px;
+  line-height: 20px;
+}

@@ -1,0 +1,128 @@
+
+/**
+ * Carousel items
+ */
+ 
+.jcarousel-skin-metrocatch_gallery {
+  text-align: center;
+}
+
+.jcarousel-skin-metrocatch_gallery .jcarousel-container-horizontal {
+  width: 675px;
+  margin: auto;
+}
+
+
+.jcarousel-skin-metrocatch_gallery .jcarousel-clip-horizontal {
+  width: 675px;
+  overflow: hidden;
+}
+
+.jcarousel-skin-metrocatch_gallery .jcarousel-clip-vertical {
+  height: 675px;
+  overflow: hidden;
+}
+
+.jcarousel-skin-metrocatch_gallery .jcarousel-item {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+  min-height: 400px;
+}
+
+.jcarousel-skin-metrocatch_gallery .jcarousel-item-horizontal {
+  margin: 0 4px;
+}
+
+.jcarousel-skin-metrocatch_gallery .jcarousel-item-vertical {
+  margin: 4px 0;
+}
+
+.jcarousel-skin-metrocatch_gallery .jcarousel-item-placeholder {
+  background: #fff url(throbber.gif) no-repeat center center;
+  color: #000;
+}
+
+.jcarousel-item > .views-field-field-picture-file-fid img {
+  border: none;
+}
+
+.jcarousel-item > .views-field-field-picture-file-data {
+  text-align: left;
+}
+
+.jcarousel-item > .views-field-ops {
+  position: absolute;
+  right: 25px;
+  bottom: 0px;
+  z-index: 2;
+}
+
+/**
+ * Control buttons
+ */
+.metrocatch-gallery-controls {
+  text-align: center;
+  position: relative;
+  bottom: 15px;
+}
+
+.metrocatch-gallery-action {
+  display: inline-block;
+  margin-right: 10px;
+  background: transparent left top;
+}
+
+.metrocatch-gallery-action:hover {
+  cursor: pointer;
+  cursor: hand;
+}
+
+.metrocatch-gallery-action.jcarousel-next,
+.metrocatch-gallery-action.jcarousel-prev {
+  width: 41px;
+  height: 41px;
+}
+
+.metrocatch-gallery-action.jcarousel-control {
+  width: 48px;
+  height: 48px;
+}
+
+.metrocatch-gallery-action.jcarousel-next {
+  background-image: url('./images/next.png');
+}
+
+.metrocatch-gallery-action.jcarousel-next:hover {
+  background-image: url('./images/next-focus.png');
+}
+
+.metrocatch-gallery-action.jcarousel-prev {
+  background-image: url('./images/prev.png');
+}
+
+.metrocatch-gallery-action.jcarousel-prev:hover {
+  background-image: url('./images/prev-focus.png');
+}
+
+.metrocatch-gallery-action.jcarousel-control.play {
+  background-image: url('./images/play.png');
+}
+
+.metrocatch-gallery-action.jcarousel-control.play:hover {
+  background-image: url('./images/play-focus.png');
+}
+
+.metrocatch-gallery-action.jcarousel-control.pause {
+  background-image: url('./images/pause.png');
+}
+
+.metrocatch-gallery-action.jcarousel-control.pause:hover {
+  background-image: url('./images/pause-focus.png');
+}
+
+.jcarousel-prev-disabled,
+.jcarousel-next-disabled {
+  display: none;
+}

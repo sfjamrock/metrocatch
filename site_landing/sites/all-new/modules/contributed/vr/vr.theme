@@ -1,0 +1,75 @@
+<?php
+// $Id: vr.theme,v 1.1.2.2 2010/06/22 17:10:16 jbomb Exp $
+
+/**
+ * theme_vr_list_pager
+ * 
+ * Provide a page for VerticalResponse list pages.  Note that this function
+ * accesses the $_GET array to determine the active page.
+ * 
+ * @param int
+ *  List size, the total number of intems items in a list.
+ * @param int
+ *  The number of items that are listed on each page.
+ * @return sting
+ *  An html string with the pager.
+ * 
+ */
+function theme_vr_list_pager($items, $items_per_page = 25) {
+  if ($items <= $items_per_page) {
+    return;
+  }
+  // Calculate number of required pages.
+  $pages = ceil($items / $items_per_page);
+
+  // Provide pager text control.
+  $options['query'] = $_GET;
+  unset($options['query']['q'], $options['query']['page']);
+  
+  $pager_start = ($_GET['page'] == 0) ? 0 : $_GET['page'] - 1;
+  $pager_end = ($pager_start + 10 < $pages) ? $pager_start + 10 : $pages;
+  for ($i = $pager_start; $i < $pager_end; $i++) {
+    $options['query']['page'] = $i;
+    if ($i == $_GET['page']) {
+      $pager[] = $i + 1;
+      continue;
+    }
+    $pager[] = l($i + 1, $_GET['q'], $options);
+  }
+  // Add 'skip' links
+  $options['html'] = TRUE;
+  if ($pager_start != 0) {
+    $options['query']['page'] = 0;
+    array_unshift($pager, l('&#171;', $_GET['q'], $options));
+  }
+  if ($pager_end != $pages) {
+    $options['query']['page'] = $pages - 1;
+    $pager[] = l ('&#187;', $_GET['q'], $options);
+  }
+  return implode(' ', $pager);
+}
+
+
+/**
+ * Provide pager and maximum view controls.  Note that this function
+ * accesses the $_GET array to preserve page state when updating
+ * list size options.
+ */
+function theme_vr_list_controls() {
+  // Provide an items per page control.
+  $options['query'] = $_GET;
+  unset($options['query']['q'], $options['query']['size'], $options['query']['page']);
+  if (empty($_GET['size'])) {
+    $_GET['size'] = 25;
+  }
+  foreach (array(25, 50, 100) as $size) {
+    if ($_GET['size'] == $size) {
+      $links[] = $size;
+    }
+    else {
+      $options['query']['size'] = $size;
+      $links[] = l($size, $_GET['q'], $options);
+    }
+  }
+  return t('Items per page: ') . implode(' | ', $links);
+}

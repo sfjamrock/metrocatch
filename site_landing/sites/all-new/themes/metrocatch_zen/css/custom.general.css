@@ -1,0 +1,331 @@
+html {
+  padding-top: 15px;
+  height: 100%;
+  font-family: Arial, Helvetica, "Nimbus Sans L", sans-serif;
+  font-size: 14px;
+}
+
+body {
+  background: url('../images/header-bg.png') center top no-repeat #222;
+  color: #3f3f3f;
+  height: 100%;
+}
+
+div#page {
+  -moz-border-radius: 8px;
+  -webkit-border-radius: 8px;
+  -o-border-radius: 8px;
+  border-radius: 8px;
+  border: 0px solid #070707;
+  background: url('../images/fallbacks/page-bg.png') top left repeat-x;
+  background: linear-gradient(center top, #000000 0%, transparent 50%);
+  background: -o-linear-gradient(center top, #000000 0%, transparent 50%);
+  background: -moz-linear-gradient(center top, #000000 0%, transparent 50%);
+  background: -webkit-linear-gradient(center top, color-stop(0, #000000), color-stop(0.5, transparent));
+  background: -ms-linear-gradient(center top, #000000 0%, transparent 50%);
+  background: -webkit-gradient(linear, left top, left bottom, color-stop(0, #000000), color-stop(0.5, transparent));
+  background: -moz-linear-gradient(center top , #000000 0%, transparent 50%);
+  padding: 8px;
+  width: 944px;
+  min-height: 700px;
+}
+
+#page-wrapper {
+  padding-top: 42px;
+}
+
+#page-outer {
+  background: transparent url('../images/fallbacks/metrocatch-outer-bg-fallback.png') left bottom repeat-x;
+  background: linear-gradient(center top, transparent 57%, #000000 74.2%);
+  background: -o-linear-gradient(center top, transparent 57%, #000000 74.2%);
+  background: -moz-linear-gradient(center top, transparent 57%, #000000 74.2%);
+  background: -webkit-linear-gradient(center top, color-stop(0.57, transparent), color-stop(0.742, #000000));
+  background: -ms-linear-gradient(center top, transparent 57%, #000000 74.2%);
+  background: -webkit-gradient(linear, left top, left bottom, color-stop(0.57, transparent), color-stop(0.742, #000000 ));
+  background: -moz-linear-gradient(center top , transparent 57%, #000000 74.2%);
+  min-height: 100%;
+}
+
+#metrocatch-labels-left,
+#metrocatch-labels-right {
+  background: transparent;
+  background-repeat: no-repeat;
+  min-height: 694px;
+}
+
+#metrocatch-labels-left {
+  background-image: url('../images/metrocatch-labels-left.png');
+  background-position: left 400px;
+}
+
+#metrocatch-labels-right {
+  background-image: url('../images/metrocatch-labels-right.png');
+  background-position: right 400px;
+}
+
+div#page-inner {
+  width: 944px;
+  position: relative;
+  margin-bottom: 15px;
+}
+
+#page-closure-wrapper {
+  background: url('../images/bricks-bg.png') 62% 0 no-repeat;
+  height: 165px;
+  margin: 6px 0 0;
+}
+
+.sidebar-first #content {
+  margin-left: 258px;
+  margin-right: -943px;
+  width: 685px;
+}
+
+#header {
+  height: 155px;
+  background: #ffffff url('../images/metrocatch-header-bg.png') top left no-repeat;
+  border-radius: 4px 4px 0 0;
+  -moz-border-radius: 4px 4px 0 0;
+  -webkit-border-radius: 4px 4px 0 0;
+  -o-border-radius: 4px;
+}
+
+#main-wrapper {
+  background: #c6c5c5 url('../images/fallbacks/main-wrapper-bg.png') left 290px repeat-x;
+  padding-bottom: 10px;
+  min-height: 500px;
+}
+
+#main {
+  margin: 0 1px;
+}
+
+#main-bg-fallback {
+  width: 942px;
+  height: 293px;
+  background: url('../images/metrocatch-top-bg.png') 0px 0px no-repeat rgb(112, 80, 206);
+  margin: 0 1px;
+  position: absolute;
+}
+
+a#logo {
+  float: none;
+  position: absolute;
+  top: -8px;
+  left: 13px;
+}
+
+#site-name {
+  width: 309px;
+  height: 46px;
+  position: absolute;
+  left: 135px;
+  top: 34px;
+  text-indent: 1000px;
+  overflow: hidden;
+  background: url('../images/metrocatch-label.png') top left no-repeat;
+}
+
+#site-name * {
+  font-size: 0px;
+}
+
+#site-slogan {
+  position: absolute;
+  top: 121px;
+  left: 15px;
+  font-size: 17px;
+  line-height: 18px;
+  font-weight: bold;
+  font-style: italic;
+  font-family: Georgia;
+}
+
+#site-slogan .date {
+  font-weight: normal;
+  margin-left: 3px;
+}
+
+#navigation {
+  background: #343434;
+  position: absolute;
+  right: 2px;
+  margin: 0px;
+  top: 2px;
+  width: auto;
+  height: 31px;
+  line-height: 32px;
+}
+
+#navigation a {
+  color:#f4f4f4;
+  font: normal 13px Arial;
+  text-decoration: none;
+  line-height: 30px;
+}
+
+#navigation li {
+  padding-right: 8px;
+  line-height: 16px;
+}
+
+#navigation a {
+  border-left: 1px solid #656565;
+  padding-left: 10px;
+  padding-right: 4px;
+}
+
+#navigation li.first a {
+  padding-left: 17px;
+  border: none;
+}
+
+body.without-user-profile-block #content-area {
+  background: #fff;
+  position: relative;
+}
+
+#page-title {
+  padding-bottom: 8px;
+}
+
+body.without-user-profile-block #content-area #content-area-inner {
+  padding: 0 10px;
+}
+
+body.without-user-profile-block #content-area .content {
+  padding: 0 15px;
+}
+
+#content-area {
+  margin-right: 22px;
+  padding-bottom: 15px;
+}
+
+body.without-user-profile-block #content-area {
+  padding-top: 8px;
+  top: -8px;
+}
+
+.group-title,
+.page-title {
+  color: #fff;
+  border: 1px solid #fff;
+  margin-left: -4px;
+  margin-right: -20px;
+  font-size: 17px;
+  font-weight: bold;
+  background: #7c5dc6 url('../images/fallbacks/group-title-bg-fallback.png') top left repeat-x;
+  background: linear-gradient(center, #7c5dc6 23%, #5e40a9 62%);
+  background: -o-linear-gradient(center top, #7c5dc6 23%, #5e40a9 62%);
+  background: -moz-linear-gradient(center top, #7c5dc6 23%, #5e40a9 62%);
+  background: -webkit-linear-gradient(center top, #7c5dc6 23%, #5e40a9 62%);
+  background: -ms-linear-gradient(center top, #7c5dc6 23%, #5e40a9 62%);
+  background: -webkit-gradient(linear, left top, left bottom, from(#7c5dc6), to(#5e40a9));
+  box-shadow: 0 0 4px #7e7e7e;
+  -moz-box-shadow: 0 0 4px #7e7e7e;
+  -webkit-box-shadow: 0 0 4px #7e7e7e;
+}
+
+.group-title a,
+.page-title a {
+  color: #fff;
+}
+
+.group-title-right {
+  float: right;
+  font-size: 12px;
+}
+
+.gradient-button > a {
+  display: block;
+  text-tdecoration: none;
+  text-align: center;
+  font-weight: bold;
+  margin: 10px 0;
+  padding: 10px 12px;
+  -moz-box-shadow: 0 -1px 3px rgba(27, 23, 24, 0.21);
+  -webkit-box-shadow: 0 -1px 3px rgba(27, 23, 24, 0.21);
+  box-shadow: 0 -1px 3px rgba(27, 23, 24, 0.21);
+  border: 1px solid #fff;
+  border-radius: 4px;
+  -moz-border-radius: 4px;
+  -webkit-border-radius: 4px;
+  -o-border-radius: 4px;
+  color: #8c8c8c;
+  background: #131213 url('../images/fallbacks/tab-bg-fallback.png') top left repeat-x;
+  background: linear-gradient(center, #4a4a4a 23%, #121112 62%);
+  background: -o-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -moz-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -webkit-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -ms-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -webkit-gradient(linear, left top, left bottom, from(#4a4a4a), to(#121112));
+}
+
+.gradient-button > a:hover {
+  color: #fff;
+  background: #5e47a3 url('../images/fallbacks/tab-active-bg-fallback.png') top left repeat-x;
+  background: linear-gradient(center, #9680dc 23%, #5e47a3 62%);
+  background: -o-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -moz-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -webkit-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -ms-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -webkit-gradient(linear, left top, left bottom, from(#9680dc), to(#5e47a3));
+}
+
+.page-title,
+.group-title {
+  height: 32px;
+  line-height: 32px;
+}
+
+.page-title {
+  padding: 1px 16px;
+}
+
+.group-title {
+  padding: 1px 12px;
+}
+
+.with-navigation #content,
+.with-navigation .region-sidebar-first,
+.with-navigation .region-sidebar-second {
+  margin-top: 0;
+  padding-top: 22px
+}
+
+html#popup_form {
+  background: transparent;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.page-title {
+  display: none;
+  margin: 0 0 0.5em;
+}
+
+body.without-user-profile-block .page-title {
+  display: block;
+}
+
+#page-closure-wrapper {
+  position: relative;
+  z-index: 2;
+}
+
+body.page-user-metromail #content-area {
+  padding-right: 0px;
+}
+
+#become-metrocatch-streak {
+  background: url('../images/become-metrocatch-front.png') top left no-repeat;
+  width: 942px;
+  height: 131px;
+  position: relative;
+  left: -258px;
+  top: -8px;
+}
+
+.feature-slot.no-catches {
+  min-height: 280px;
+}

@@ -1,0 +1,75 @@
+<?php
+/**
+ * @file
+ * General function and hook implementations
+ */
+
+/**
+ * Implementaion of hook_menu_alter().
+ */
+function metrocatch_custom_menu_alter(&$items) {
+  // remove standard '/node' page
+  unset($items['node']);
+}
+
+/**
+ * Implementation of hook_init().
+ */
+function metrocatch_custom_init() {
+  popup_forms_parent_js();
+  drupal_add_js(drupal_get_path('module', 'metrocatch_custom') .'/metrocatch_custom.js');
+}
+
+
+/**
+ * Implementation of hook_popup_forms_data().
+ */
+function metrocatch_custom_popup_forms_data() {
+  return array(
+    'metrocatch_custom_subscribe_form' => array(
+      'params' => array('tid' => 1),
+      'close_buttons' => array('op'),
+      'file' => drupal_get_path('module', 'simplenews') .'/includes/simplenews.subscription.inc',
+    ),
+  );
+}
+
+/**
+ * Subscribe form callback
+ */
+function metrocatch_custom_subscribe_form(&$form_state, $tid) {
+  drupal_set_title('Subscribe to MetroCatch newsletters.');
+  $form = simplenews_block_form($form_state, $tid);
+  $form['#submit'] = array('simplenews_block_form_submit', 'metrocatch_custom_subscribe_form_submit');
+  $form['#validate'] = array('simplenews_block_form_validate');
+  return $form;
+}
+
+/**
+ * Additional submit handler for subscribtion form
+ */
+function metrocatch_custom_subscribe_form_submit($form, $form_state) {
+  // remove messages, leaved by simplenews module
+  unset($_SESSION['messages']);
+}
+
+/**
+ * Preprocess function for 'page'
+ */
+function metrocatch_custom_preprocess_page(&$vars) {
+  // add "subscribe" link for anonymous users
+  global $user;
+  if (!$user->uid) {
+    if (!is_array($vars['primary_links'])) {
+      $vars['primary_links'] = array();
+    }
+    $vars['primary_links']['subscribe-link'] = array(
+      'fragment' => 'subscribe',
+      'attributes' => array(),
+      'href' => '<front>',
+      'title' => t('Subscribe'),
+    );
+  }
+}
+
+

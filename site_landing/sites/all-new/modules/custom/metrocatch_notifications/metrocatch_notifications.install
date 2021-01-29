@@ -1,0 +1,13 @@
+<?php
+/**
+ * @file
+ * metrocatch_notifications.install
+ */
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function metrocatch_notifications_uninstall() {
+  db_query("DELETE FROM {variable} WHERE name LIKE 'metrocatch_notifications%%'");
+  cache_clear_all('variables', 'cache');
+}

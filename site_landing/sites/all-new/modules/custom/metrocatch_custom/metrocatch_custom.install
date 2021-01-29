@@ -1,0 +1,182 @@
+<?php
+/**
+ * @file
+ * Module install(), uninstall() hooks and related functions.
+ */
+
+
+/**
+ * Implementation of hook_install().
+ */
+function metrocatch_custom_install() {
+  metrocatch_custom_init_variables();
+  drupal_install_schema('metrocatch_custom');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function metrocatch_custom_uninstall() {
+  drupal_uninstall_schema('metrocatch_custom');
+  // Delete module's variables.
+  db_query("DELETE FROM {variables} WHERE name LIKE('%s%%')", 'metrocatch_custom_');
+  cache_clear_all('variables', 'cache');
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function metrocatch_custom_schema() {
+  return array(
+    'metrocatch_custom_triggers' => array(
+      'description' => 'Information about executed triggers.',
+      'fields' => array(
+        'uid' => array(
+          'description' => 'The {users}.uid user id',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'trigger_name' => array(
+          'description' => 'Trigger name',
+          'type' => 'varchar',
+          'not null' => TRUE,
+          'length' => 32,
+        ),
+        'number' => array(
+          'desription' => 'Number of times that this trigger was executed for this user.',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+      ),
+      'primary key' => array('uid', 'trigger_name'),
+    ),
+    'metrocatch_custom_user_badges' => array(
+      'descrition' => 'Contains user badges, earned points and reason',
+      'fields' => array(
+        'bid' => array(
+          'type' => 'int',
+          'description' => 'Badge id.',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'uid' => array(
+          'type' => 'int',
+          'description' => 'The {users}.uid id.',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'aid' => array(
+          'type' => 'int',
+          'description' => 'The {actions}.aid id.',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+      ),
+      'primary key' => array('bid', 'uid'),
+      'indexes' => array(
+        'action_id' => array('aid'),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function metrocatch_custom_update_6001() {
+  metrocatch_custom_init_variables();
+  return array();
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function metrocatch_custom_update_6002() {
+  return drupal_install_schema('metrocatch_custom');
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function metrocatch_custom_update_6003() {
+  // Add new table.
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('metrocatch_custom');
+  db_create_table($ret, 'metrocatch_custom_user_badges', $schema['metrocatch_custom_user_badges']);
+  // Update actions.
+
+  // Load badge-points actions info from DB.
+  $operations = metrocatch_custom_hook_info();
+  $operations = $operations['metrocatch_custom']['metrocatch_custom'];
+  $rows = db_query(
+    "SELECT ac.*, ta.op as operation
+    FROM {actions} ac
+    LEFT JOIN {trigger_assignments} ta ON ac.aid=ta.aid
+    WHERE ac.callback='metrocatch_custom_add_badge_and_metropoints_action'"
+  );
+  while ($row = db_fetch_object($rows)) {
+    if (!isset($operations[$row->operation])) {
+      continue;
+    }
+    $parameters = unserialize($row->parameters);
+    $parameters['reason'] = $operations[$row->operation]['runs when'];
+    db_query("UPDATE {actions} SET parameters='%s' WHERE aid=%d", serialize($parameters), $row->aid);
+  }
+
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Recreates 'metrocatch_custom_user_badges' table.
+ */
+function metrocatch_custom_update_6004() {
+  $ret = array();
+  $actions = array();
+  $result = db_query('SELECT * FROM {actions}');
+  while ($action = db_fetch_object($result)) {
+    $action->parameters = unserialize($action->parameters);
+    $actions[] = $action;
+  }
+  $result = db_query('SELECT * FROM {metrocatch_custom_user_badges}');
+  $rows = array();
+  while ($row = db_fetch_object($result)) {
+    foreach ($actions as $action) {
+      if ($action->aid == 1 && $row->reason == 'User initiates and has 1 connection verified') {
+        $rows[] = array(
+          'bid' => $row->bid,
+          'uid' => $row->uid,
+          'aid' => $action->aid,
+        );
+        break;
+      }
+      elseif (isset($action->parameters['reason']) && $action->parameters['reason'] == $row->reason && isset($action->parameters['number']) && $action->parameters['number'] == $row->points) {
+        $rows[] = array(
+          'bid' => $row->bid,
+          'uid' => $row->uid,
+          'aid' => $action->aid,
+        );
+        break;
+      }
+    }
+  }
+  $schema = drupal_get_schema_unprocessed('metrocatch_custom');
+  db_drop_table($ret, 'metrocatch_custom_user_badges');
+  db_create_table($ret, 'metrocatch_custom_user_badges', $schema['metrocatch_custom_user_badges']);
+  while ($row = array_shift($rows)) {
+    drupal_write_record('metrocatch_custom_user_badges', $row);
+  }
+  return $ret;
+}
+
+/**
+ * Init module variables.
+ */
+function metrocatch_custom_init_variables() {
+  $vid = userpoints_get_vid();
+  $metropoints_tid = db_result(db_query("SELECT tid FROM {term_data} WHERE name='metropoints' AND vid=%d", $vid));
+  variable_set('metrocatch_custom_metropoints_tid', $metropoints_tid);
+}

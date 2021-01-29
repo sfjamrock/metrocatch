@@ -1,0 +1,32 @@
+
+#header .tabs {
+  overflow: hidden;
+}
+
+#block-menu-menu-metrocatch-footer-menu {
+  text-align: right;
+}
+
+#metrocatch-footer-title-prefix {
+  width: 309px;
+}
+
+.user-profile.user-profile-featured .user-profile-photos,
+.user-profile.user-profile-featured .user-profile-share-links,
+.user-profile-featured-teaser .user-profile-photos,
+.user-profile-featured-teaser .user-profile-share-links,
+.user-profile-featured-teaser .user-profile-connect-link {
+  left: 235px;
+}
+
+.user-profile-username-wrapper > div.icon-small {
+  background-position-y: 20px;
+}
+
+div.user-profile-connections-count-and-time-left {
+  bottom: 1px;
+}
+
+.user-profile-interest {
+
+}

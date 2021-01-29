@@ -1,0 +1,123 @@
+<?php
+// $Id: vr_register.module,v 1.1.2.9 2010/07/13 18:55:31 jbomb Exp $
+
+/**
+ * hook_menu implementation
+ */
+function vr_register_menu() {
+  $items['admin/build/vr/list/register'] = array(
+    'title' => t('User Registration'),
+    'description' => t('Select which mailing lists should be available during user
+      registration.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_register_settings'),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_register.admin.inc',
+    );
+  return $items;
+}
+
+/**
+ * hook_theme implementation
+ */
+function vr_register_theme($existing, $type, $theme, $path) {
+  return array(
+     'vr_register_settings' => array(
+       'arguments' => array('form' => array()),
+       'file' => 'vr_register.admin.inc',
+       ),
+    );
+}
+
+/**
+ * hook_user implementation
+ * 
+ * Add newsletter subscriptions to the user registration form.
+ */
+function vr_register_user($op, &$edit, &$account, $category = NULL) {
+  switch ($op) {
+    case 'register':
+      $values = _vr_register_options();
+      if (!empty($values['options'])) {
+        $form['vr_register'] = array(
+          '#type' => 'checkboxes',
+          '#title' => t('Email subscriptions'),
+          '#options' => $values['options'],
+          '#default_value' => $values['defaults'],
+          );
+      }
+      if (!empty($values['hidden'])) {
+        $form['vr_hidden_registration'] = $values['hidden'];
+        $form['vr_hidden_registration']['#tree'] = TRUE;
+      }
+      return (is_array($form)) ? $form : array();
+      break;
+    case 'insert':
+      // Escape this part of the registration process if the registering user
+      // has not selected a mailing list to subscribe to and there are no hidden
+      // list registrations.
+      if (!is_array($edit['vr_register']) AND empty($edit['vr_hidden_registration'])) {
+        break;
+      }
+      // User has selected visible lists and hidden lists are present.
+      elseif (is_array($edit['vr_register']) AND !empty($edit['vr_hidden_registration'])) {
+        $edit['vr_register'] = array_merge($edit['vr_register'], $edit['vr_hidden_registration']);
+      }
+      // Hidden lists, but no visible lists on registration.
+      elseif (!is_array($edit['vr_register']) AND !empty($edit['vr_hidden_registration'])) {
+        $edit['vr_register'] = $edit['vr_hidden_registration'];
+      }
+      // No further action is required if the user has selected lists and there
+      // are no hidden lists present.
+      foreach ($edit['vr_register'] as $list_id) {
+        $param['list_member'] = array(
+          'list_id' => $list_id,
+          'member_data' => array(
+            array(
+              'name' => 'email_address',
+              'value' => $account->mail,
+              ),
+            ),
+          );
+        vr_api('addListMember', $param);
+      };
+      unset($edit['vr_register'], $edit['vr_hidden_registration']);
+      break;
+  }
+}
+
+/**
+ * Provide a form so that users can subscribe to newsletters during the
+ * registration process.
+ */
+function _vr_register_options() {
+  $lists = vr_get_lists();
+  $return['defaults'] = array();
+  foreach ($lists as $list => $name) {
+    $enabled = variable_get('vr_register_enabled_' . $list, 0);
+    $state = variable_get('vr_register_state_' . $list, 0);
+    if ($enabled == 1 AND $state < 2) {
+      $return['options'][$list] = $name;
+      if ($state == 1) {
+        $return['defaults'][] = $list;
+      }
+    }
+    // Enabled but hidden.
+    elseif ($enabled == 1) {
+      $return['hidden'][$list] = array(
+        '#type' => 'hidden',
+        '#value' => $list,
+        );
+    }
+  }
+  return $return;
+}
+
+/**
+ * hook_user implementation
+ */
+function vr_register_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id == 'vr_register_settings') {
+    $form['#theme'] = array('vr_register_settings', $form['#theme']);
+  }
+}

@@ -1,0 +1,111 @@
+<?php
+
+/**
+ * @file
+ * Manages quickcron tasks.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function quickcron_menu() {
+  return array(
+    'admin/settings/quickcron' => array(
+      'title' => 'Quickcron',
+      'type' => MENU_NORMAL_ITEM,
+      'description' => 'Administer quickcron',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('quickcron_admin_page_form'),
+      'access arguments' => array('administer quickcron'),
+      'file' => 'quickcron.pages.inc',
+    ),
+    'admin/settings/quickcron/manage' => array(
+      'title' => 'Manage',
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+    ),
+    'admin/settings/quickcron/settings' => array(
+      'title' => 'Settings',
+      'type' => MENU_LOCAL_TASK,
+      'weight' => 1,
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('quickcron_config_page_form'),
+      'access arguments' => array('administer quickcron'),
+      'file' => 'quickcron.pages.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function quickcron_perm() {
+  return array('administer quickcron');
+}
+
+/**
+ * Reset quickcron semaphores.
+ */
+function quickcron_reset() {
+  db_query("DELETE FROM {semaphore} WHERE name = 'quickcron'");
+  db_query("DELETE FROM {semaphore} WHERE name = 'new_quickcron'");
+}
+
+/**
+ * Execute quickcron tasks.
+ *
+ * This function is performed until quickron time exceeds treshold defined in
+ * 'quickcron_run_time' Drupal variable or new quickcron is started.
+ */
+function quickcron_run_quickcron() {
+  $log_enabled = variable_get('quickcron_log', 1);
+  // Current float timestamp.
+  $start = microtime(TRUE);
+  // Get variables required for quickcron.
+  $max_script_time = variable_get('quickcron_run_time', 650); // Maximum script execution time, in seconds.
+  $quickcron_period = variable_get('quickcron_period', 1); // A period hook_quickcron must be called.
+  $microseconds_in_second = 1000000;
+  $lock_new_quickcron_time = $max_script_time;
+  $lock_quickcron_time = $max_script_time;
+
+  // Acquire 'new_quickcron' lock.
+  if (!lock_acquire('new_quickcron', $lock_new_quickcron_time)) {
+    watchdog('quickcron', 'Quickcron can\'t start (another waiting quickcron detected).', array(), WATCHDOG_WARNING);
+    return;
+  }
+  if ($log_enabled) {
+    watchdog('quickcron', 'Quickcron is waiting for previous quickcron shutdown.');
+  }
+
+  // Wait for old quickcron shutdown.
+  while (!lock_acquire('quickcron', $lock_quickcron_time)) {
+    // Sleep 1 second.
+    usleep(1000000);
+    if(microtime(TRUE) - $start > $max_script_time) {
+      watchdog('quickcron', 'Quickcron terminated due to timeout (can\'t lock "quickcron" mutex).', array(), WATCHDOG_WARNING);
+      lock_release('new_quickcron');
+      return;
+    }
+  }
+  lock_release('new_quickcron');
+  if ($log_enabled) {
+    watchdog('quickcron', 'Quickcron started.');
+  }
+
+  // Call hook_quickcron() until new instance is started or $max_script_time is expired
+  do {
+    $time_of_hook_start = microtime(TRUE);
+    module_invoke_all('quickcron');
+    $time_of_hook_end = microtime(TRUE);
+    // Sleep for remaining time.
+    $sleep = ($quickcron_period - $time_of_hook_end + $time_of_hook_start) * $microseconds_in_second;
+    if ($sleep > 0) {
+      usleep($sleep);
+    }
+  } while (lock_may_be_available('new_quickcron') && microtime(TRUE) - $start < $max_script_time);
+
+  // Finish quickcron run.
+  lock_release('quickcron');
+  if ($log_enabled) {
+    watchdog('quickcron', 'Quickcron run completed.');
+  }
+}

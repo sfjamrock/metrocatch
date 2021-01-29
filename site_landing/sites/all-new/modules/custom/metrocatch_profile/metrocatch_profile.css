@@ -1,0 +1,96 @@
+.metrocatch-profile-user-avatar {
+	float: left;
+}
+
+.metrocatch-profile-user-avatar > a {
+  display: block;
+}
+
+.metrocatch-profile-baseinfo {
+	margin-left: 210px;
+}
+
+.metrocatch-profile-username-wrapper {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 4px 0 0;
+}
+
+.metrocatch-profile-default-picture {
+  display: block;
+  background-position: top left;
+}
+
+.metrocatch-profile-default-picture img {
+  background: #fff;
+}
+
+.metrocatch-profile-private-fields {
+  position: relative;
+}
+
+.metrocatch-profile-private-field > .form-item + .form-item {
+  position: relative;
+}
+
+.profile-indepth-info {
+  position: relative;
+}
+
+#edit-field-profile-height-inches-0-value-wrapper label,
+#edit-field-profile-height-feet-make-private-wrapper {
+  display: none;
+}
+
+.field-privacy-field_profile_height_feet-wrapper,
+.field-privacy-field_profile_height_inches-wrapper,
+.metrocatch-profile-private-field-field_profile_height_feet,
+.metrocatch-profile-private-field-field_profile_height_inches {
+  display: inline-block;
+  width: 120px;
+}
+
+.metrocatch-profile-private-field-field_profile_height_feet input[type="text"],
+.metrocatch-profile-private-field-field_profile_height_inches input[type="text"] {
+  width: auto !important;
+}
+
+.field-privacy-field_profile_height_inches-wrapper .field-privacy-field_profile_height_inches,
+.metrocatch-profile-private-field-field_profile_height_inches #edit-field-profile-height-inches-make-private-wrapper {
+  position: absolute;
+  right: 6px;
+}
+
+.metrocatch-profile-private-field-field_profile_height_inches #edit-field-profile-height-inches-make-private-wrapper {
+  top: 90px;
+  right: 96px;
+}
+
+.metrocatch-profile-private-field-field_profile_height_feet #edit-field-profile-height-feet-0-value-wrapper,
+.metrocatch-profile-private-field-field_profile_height_inches #edit-field-profile-height-inches-0-value-wrapper,
+#edit-field-profile-height-feet-0-value-wrapper,
+#edit-field-profile-height-inches-0-value-wrapper {
+  display: inline-block;
+  float: none;
+  width: auto;
+}
+
+.field-privacy-field_profile_height_feet-wrapper div.field-privacy-field,
+.field-privacy-field_profile_height_inches-wrapper div.field-privacy-field {
+  width: auto;
+  margin-right: 0;
+}
+
+div.field-privacy-field,
+div.field-privacy {
+  display: inline-block;
+}
+
+div.field-privacy-field {
+  width: 75%;
+  margin-right: 5%;
+}
+
+div.field-privacy {
+  width: 20%;
+}

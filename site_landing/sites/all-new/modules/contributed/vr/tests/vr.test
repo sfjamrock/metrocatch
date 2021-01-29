@@ -1,0 +1,29 @@
+<?php
+// $Id: vr.test,v 1.1.2.1 2010/06/08 18:30:44 jbomb Exp $
+
+class vrSimpleTest extends DrupalWebTestCase {
+  
+  public static function getInfo() {
+    return array(
+      'name' => t('Connect to VerticalResponse'),
+      'description' => t('Attempt to connect to VerticalResponse'),
+      'group' => 'VerticalResponse',
+      );
+  }
+  
+  public function setUp() {
+    parent::setUp('content', 'vr');
+    $path = drupal_get_path('module', 'vr');
+    $filepath = $path . '/tests/settings.php';
+    include_once($filepath);
+  }
+  
+  function testConnectivity() {
+    $path = drupal_get_path('module', 'vr');
+    $filepath = $path . '/tests/settings.php';
+    $message = t('Configuration file exists in @path', array('@path' => $filepath));
+    $this->assertTrue(file_exists($filepath), $message);
+    $result = (_vr_init() !== FALSE) ? TRUE : FALSE;
+    $this->assertTRUE($result, t('VR Connected'));
+  }
+}

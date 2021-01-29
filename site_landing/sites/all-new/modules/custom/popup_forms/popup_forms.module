@@ -1,0 +1,109 @@
+<?php
+/**
+ * @file
+ * main module file
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function popup_forms_menu() {
+  return array(
+    'ajax-get-popup-form/%' => array(
+      'page callback' => 'popup_forms_get_ajax_form',
+      'page arguments' => array(1),
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+      'file' => 'popup_forms.pages.inc'
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_theme_registry_alter().
+ */
+function popup_forms_theme_registry_alter(&$theme_registry) {
+  if (isset($theme_registry['page']) && isset($theme_registry['page']['theme paths'])) {
+    $module_path = drupal_get_path('module', 'popup_forms');
+    array_unshift($theme_registry['page']['theme paths'], $module_path);
+    array_unshift($theme_registry['page']['preprocess functions'], 'popup_forms_pre_preprocess_page');
+  }
+}
+
+/**
+ * Preprocess template variables for page.tpl.php - step 1.
+ */
+function popup_forms_pre_preprocess_page(&$variables) {
+  if (!empty($GLOBALS['popup_forms_page_template'])) {
+    $variables['show_blocks'] = FALSE;
+  }
+}
+
+/**
+ * Preprocess template variables for page.tpl.php - step 2.
+ */
+function popup_forms_preprocess_page(&$variables) {
+  if (!empty($GLOBALS['popup_forms_page_template'])) {
+    if (!isset($variables['template_files'])) {
+      $variables['template_files'] = array();
+    }
+    array_push($variables['template_files'], 'popup_forms-page');
+
+    if (variable_get('popup_forms_default_css', TRUE)) {
+      drupal_add_css(drupal_get_path('module', 'popup_forms') .'/css/popup_forms.default.css');
+    }
+  }
+}
+
+/*
+ * Part of the popup_forms API.
+ * Call this method if you are going to open a jquer ui dialog. It includes needed
+ * css and javascript tools to ease up the process
+ */
+function popup_forms_parent_js() {
+  static $processed;
+  // Make sure external resources are not included more than once.
+  if ($processed === TRUE) {
+    return;
+  }
+  $processed = TRUE;
+  $m = drupal_get_path('module', 'popup_forms');
+  drupal_add_js("$m/js/jquery.ba-postmessage.min.js");
+  drupal_add_css("$m/css/popup_forms.parent.css");
+  drupal_add_js("$m/js/popup_forms_parent.js");
+}
+
+/*
+ * Part of the popup_forms API.
+ * This method must be called in the client (child) window. E.g. when you load
+ * the URL dialog/login you must call jquery_ui_dialog_child_js in the menu handler callback
+ * In general this adds the needed js tool to connect to the parent communitcation tunnel
+ * And handle all the auto-resize events.
+ */
+function popup_forms_child_js($options = array()) {
+  $my_options = array('index' => $_GET['popup_forms_num']);
+  $my_options = array_merge($my_options, $options);
+
+  drupal_add_js(array('popup_forms_child' => $my_options), 'setting');
+  module_invoke_all('popup_forms_child_loading');
+  $GLOBALS['popup_forms_page_template'] = TRUE;
+  $m = drupal_get_path('module', 'popup_forms');
+  drupal_add_js("$m/js/jquery.ba-postmessage.min.js");
+  drupal_add_js($m .'/js/popup_forms_child.js');
+  jquery_ui_add(array('ui.dialog', 'ui.draggable'));
+
+
+  // Add the css files we need for the dialog in general
+  drupal_add_css("$m/css/popup_forms.child.css");
+  drupal_add_css("$m/css/popup_forms-dialog/popup_forms.css");
+  // Add the css files for the jquery ui theme
+  drupal_add_css("$m/css/popup_forms-dialog/popup_forms.css");
+}
+
+/**
+ * Implementation of hook_popup_forms_child_loading().
+ */
+function popup_forms_popup_forms_child_loading() {
+  module_invoke('admin', 'suppress');
+  module_invoke('admin_menu', 'suppress');
+}

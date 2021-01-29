@@ -1,0 +1,63 @@
+/**
+ * @file
+ * Message Styling
+ *
+ * Sensible styling for Drupal's error/warning/status messages.
+ */
+
+#messages-wrapper {
+  padding: 8px 10px 1px;
+  background: #7556D0 url('../images/metrocatch-messages-wrapper-bg.png') top left repeat-y;
+  margin: 0 1px;
+  height: 100%;
+}
+
+div.messages,
+div.status,
+div.warning,
+div.error /* Important messages (status, warning, and error) for the user */ {
+  color: #FAFAFA;
+  margin: 0 1em 0px 1em;
+  border: 1px solid #6B4DC0;
+  border-radius: 4px;
+  -moz-border-radius: 4px;
+  -webkit-border-radius: 4px;
+  -o-border-radius: 4px;
+  padding: 5px 5px 5px 35px;
+  margin: 5px 0;
+  background-color: #54457D;
+  background-image: url(../images/messages-status.png);
+  background-repeat: no-repeat;
+  background-position: 5px 5px; /* LTR */
+  background-color: ;
+}
+
+div.messages a {
+  color: #FAFAFA;
+  text-decoration: underline;
+}
+
+div.messages .krumo-root,
+div.messages .krumo-root a {
+  color: #000;
+}
+
+div.status /* Normal priority messages */ {
+}
+
+div.warning /* Medium priority messages */ {
+  background-image: url(../images/messages-warning.png);
+}
+
+
+div.error /* High priority messages. See also the .error declaration in pages.css. */ {
+  /* border: 1px solid #d77; */ /* Drupal core uses: 1px solid #d77 */
+  background-image: url(../images/messages-error.png);
+}
+
+
+
+div.messages ul {
+  margin-top: 0;
+  margin-bottom: 0;
+}

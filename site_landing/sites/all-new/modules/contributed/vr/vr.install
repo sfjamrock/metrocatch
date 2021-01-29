@@ -1,0 +1,53 @@
+<?php
+// $Id: vr.install,v 1.1.2.3 2010/06/22 17:10:16 jbomb Exp $
+
+/**
+ * hook_install implementation
+ */
+function vr_install() {
+  drupal_load('module', 'content');
+  content_notify('install', 'vr');
+}
+
+/**
+ * hook_uninstall implementation
+ */
+function vr_uninstall() {
+  drupal_load('module', 'content');
+  content_notify('uninstall', 'vr');
+}
+
+/**
+ * Implementation of hook_enable().
+ *
+ * Notify content module when this module is enabled.
+ */
+function example_enable() {
+  drupal_load('module', 'content');
+  content_notify('enable', 'vr');
+}
+
+/**
+ * Implementation of hook_disable().
+ *
+ * Notify content module when this module is disabled.
+ */
+function example_disable() {
+  drupal_load('module', 'content');
+  content_notify('disable', 'vr');
+}
+
+/**
+ * Rename permission from 'administer vertical response' to 'administer VerticalResponse'
+ */
+function vr_update_6100() {
+  $ret = array();
+  $result = db_query('SELECT rid, perm FROM {permission} ORDER BY rid');
+  while ($role = db_fetch_object($result)) {
+    $perm = preg_replace('/administer vertical response/', 'administer VerticalResponse', $role->perm);
+    if ($perm != $role->perm) {
+      $ret[] = update_sql("UPDATE {permission} SET perm = '$perm' WHERE rid = $role->rid");
+    }
+  }
+  return $ret;
+}

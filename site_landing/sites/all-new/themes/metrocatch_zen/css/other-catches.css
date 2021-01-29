@@ -1,0 +1,127 @@
+
+#other-catches-block,
+#featured-catches-block {
+  width: 700px;
+  position: relative;
+  left: -7px;
+}
+
+.catch-preview-wrapper {
+  width: 215px;
+  float: none;
+  height: 119px;
+  background: url('../images/other-catch-preview-bg.png') top left no-repeat;
+  position: relative;
+  left: 8px;
+}
+
+.page.page-catches-catch .catch-preview-wrapper {
+  top: 5px;
+}
+
+.catch-preview-wrapper .metrocatch-profile-default-picture {
+  border: 2px solid #fafafa;
+}
+
+.catch-preview-wrapper .catch-preview-name {
+  background: url('../images/catch-preview-icon.png') 7px 50% no-repeat #fff;
+  bottom: 17px;
+  height: 26px;
+  left: 3px;
+  line-height: 26px;
+  padding-right: 5px;
+  position: absolute;
+  text-align: right;
+  width: 192px;
+}
+
+.catch-preview-wrapper .catch-preview-name a {
+  margin-right: 10px;
+}
+
+.catch-preview-wrapper .catch-preview-name,
+.catch-preview-wrapper .catch-preview-name a {
+  color: #2f2f2f;
+  font-size: 17px;
+  font-weight: bold;
+}
+
+.catch-preview-userpic {
+  margin: 2px 4px;
+  width: 207px;
+  position: relative;
+  top: 4px;
+}
+
+.catch-preview-preference {
+  height: 67px;
+  width: 59px;
+  position: absolute;
+  right: 15px;
+  top: 13px;
+}
+
+.catch-preview-preference.man-interested-in-women {
+  background: url('../images/icons/mw-icon-large.png') top left no-repeat;
+}
+
+.catch-preview-preference.man-interested-in-men {
+  background: url('../images/icons/mm-icon-large.png') top left no-repeat;
+}
+
+.catch-preview-preference.woman-interested-in-women {
+  background: url('../images/icons/ww-icon-large.png') top left no-repeat;
+}
+
+.catch-preview-preference.woman-interested-in-men {
+  background: url('../images/icons/wm-icon-large.png') top left no-repeat;
+}
+
+a.metrocatch-toggle-archive {
+  color: #fff;
+  font-size: 17px;
+  font-weight: bold;
+}
+
+a.metrocatch-toggle-archive > div {
+  height: 26px;
+  line-height: 26px;
+  background: #5f40aa;
+  text-align: left;
+  width: 167px;
+  padding-left: 30px;
+  float: right;
+  margin: 20px -21px 30px 0;
+}
+
+a.metrocatch-toggle-archive > div.view-all-other-catches {
+  background: url('../images/icons/loupe-icon.png') 10px 3px no-repeat #5f40aa;
+}
+
+.page.page-catches-catch #featured-catches-block {
+  margin-top: -8px;
+}
+
+.metrocatch-other-catches-row {
+  
+}
+
+.metrocatch-other-catches-cell {
+  float: left;
+  width: 230px;
+  height: 135px;
+}
+
+.page.page-catches-catch .metrocatch-other-catches-cell {
+  height: 132px;
+  border-right: 1px solid #fff;
+  border-bottom: 1px solid #fff;
+}
+
+.page.page-catches-catch .metrocatch-other-catches-cell.last {
+  border-right: 0;
+}
+
+.page.page-catches-catch .metrocatch-other-catches-row.last .metrocatch-other-catches-cell {
+  border-bottom: 0;
+}

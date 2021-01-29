@@ -1,0 +1,22 @@
+.metrocatch-uc-purchase-history .metrocatch-uc-user-purchase .purchse-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.metrocatch-uc-purchase-history .metrocatch-uc-user-purchase .purchase-date {
+  float: right;
+}
+
+.metrocatch-uc-purchase-history ul {
+  list-style-type: none;
+}
+
+.metrocatch-uc-purchase-history .metrocatch-uc-user-purchase {
+  border-bottom: 1px solid black;
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+}
+
+
+

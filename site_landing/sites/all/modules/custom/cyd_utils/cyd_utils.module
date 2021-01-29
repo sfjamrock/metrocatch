@@ -1,0 +1,1070 @@
+<?php
+/**
+ * @file
+ * Hook implementations and general functions
+ */
+
+$cyd_utils_initialized = FALSE;
+
+/**
+ * @name hooks
+ * @{
+ * Hook implementations.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function cyd_utils_menu() {
+  return array(
+    /* 'cyd-utils/get-page-messages-ajax' => array(
+      'title' => 'Ajax retrieve page messages',
+      'page callback' => 'ubaby_custom_add_user',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    ),*/
+    'admin/settings/cyd-utils' => array(
+      'title' => 'CYD Utilities',
+      'description' => 'Code Your Dream utilities',
+      'page callback' => 'cyd_utils_pages_list',
+      'access arguments' => array('access page data'),
+      'type' => MENU_NORMAL_ITEM,
+      'file' => 'cyd_utils.admin.inc',
+    ),
+    'admin/settings/cyd-utils/pages' => array(
+      'title' => 'Pages',
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'weight' => -10,
+    ),
+    'admin/settings/cyd-utils/pages/%cyd_utils_page' => array(
+      'title' => 'Page request',
+      'description' => 'Single page view',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('cyd_utils_page_view_form', 4),
+      'access arguments' => array('access page data'),
+      'file' => 'cyd_utils.admin.inc',
+      'type' => MENU_LOCAL_TASK,
+    ),
+    'admin/settings/cyd-utils/logs' => array(
+      'title' => 'Logs',
+      'page callback' => 'cyd_utils_logs',
+      'access arguments' => array('access cyd utils logs'),
+      'type' => MENU_LOCAL_TASK,
+      'file' => 'cyd_utils.admin.inc',
+    ),
+    'admin/settings/cyd-utils/logs/%cyd_utils_log' => array(
+      'title' => 'View',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('cyd_utils_log_view_form', 4),
+      'access arguments' => array('access cyd utils logs'),
+      'type' => MENU_LOCAL_TASK,
+      'file' => 'cyd_utils.admin.inc',
+    ),
+    'admin/settings/cyd-utils/page-tags' => array(
+      'title' => 'Page tags',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('cyd_utils_page_tags_form'),
+      'access arguments' => array('access cyd utils logs'),
+      'type' => MENU_LOCAL_TASK,
+      'file' => 'cyd_utils.admin.inc',
+    ),
+    'admin/settings/cyd-utils/settings' => array(
+      'title' => 'Settings',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('cyd_utils_settings_form'),
+      'access arguments' => array('access page data'),
+      'type' => MENU_LOCAL_TASK,
+      'file' => 'cyd_utils.admin.inc',
+    ),
+    'cyd-utils-test' => array(
+      'title' => 'Test page',
+      'description' => 'A page for testing purposes.',
+      'page callback' => 'cyd_utils_test_page',
+      'access arguments' => array('access cyd test pages'),
+      'type' => MENU_NORMAL_ITEM,
+      'file' => 'cyd_utils.pages.inc',
+    ),
+    'cyd-utils-test-email' => array(
+      'title' => 'Email test page',
+      'description' => 'Send test email',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('cyd_utils_email_test_form'),
+      'access arguments' => array('access cyd test pages'),
+      'type' => MENU_NORMAL_ITEM,
+      'file' => 'cyd_utils.pages.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_init().
+ */
+function cyd_utils_init() {
+  global $cyd_utils_initialized;
+  $cyd_utils_initialized = TRUE;
+  // register custom shutdown function, because hook_exit() could be not executed.
+  register_shutdown_function('cyd_utils_shutdown_handler');
+  // register custom error handler
+  global $cyd_utils_old_error_handler;
+  $cyd_utils_old_error_handler = set_error_handler('cyd_utils_error_hadler');
+  $page = cyd_utils_get_current_page();
+  if (!$page) {
+    return;
+  }
+//  TODO: This code is for page prints (not implemented yet).
+//  if (!isset($_SESSION['cyd_utils_pages'])) {
+//    $_SESSION['cyd_utils_pages'] = array();
+//  }
+//  $_SESSION['cyd_utils_pages'][$page->pid] = $page;
+  cyd_utils_collect_info('init');
+  if (variable_get('cyd_utils_enable_bot_tags', FALSE)) {
+    $bot_tags = variable_get('cyd_utils_bot_tags', '');
+    $bot_tags = explode("\n", $bot_tags);
+    $user_agent = $_SERVER['HTTP_USER_AGENT'];
+    foreach ($bot_tags as $botstring) {
+      list($bot_useragent, $bot_name) = explode('|', $botstring);
+      if ($bot_useragent = trim($bot_useragent, "\r") && strpos($user_agent, $bot_useragent) !== FALSE) {
+        cyd_utils_tag_page('bot: '.  trim($bot_name, "\r\n"));
+        break;
+      }
+    }
+  }
+  if (variable_get('cyd_utils_enable_php_file_tags', FALSE)) {
+    $current_filename = drupal_substr($_SERVER['SCRIPT_NAME'], 1);
+    $excluded_files = explode("\n", variable_get('cyd_utils_exclude_php_file_tags', "index.php"));
+    $file_excluded = FALSE;
+    foreach ($excluded_files as $excluded_file) {
+      if ($current_filename == trim($excluded_file)) {
+        $file_excluded = TRUE;
+        break;
+      }
+    }
+    if (!$file_excluded) {
+       cyd_utils_tag_page('file: '. $current_filename);
+    }
+  }
+}
+
+/**
+ * Implementation of hook_exit().
+ */
+function cyd_utils_exit() {
+  global $cyd_utils_hook_exit_called;
+  $cyd_utils_hook_exit_called = TRUE;
+  cyd_utils_collect_info('exit');
+}
+
+/**
+ * Implementation of hook_cron().
+ */
+function cyd_utils_cron() {
+  // make clean our tables
+  $tables = array('cyd_utils_logs' => 'log_time', 'cyd_utils_pages' => 'request_time',);
+  $table_limits = variable_get('cyd_utils_table_limits', array('cyd_utils_logs' => array('time_limit' => 0, 'records_limit' => 0), 'cyd_utils_pages' => array('time_limit' => 0, 'records_limit' => 0)));
+  $now = time();
+  foreach ($tables as $table => $time_column) {
+    if ($table_limits[$table]['time_limit']) {
+      // delete old records
+      db_query("DELETE FROM {". $table .'} WHERE '. $time_column .' < %d', $now - $table_limits[$table]['time_limit']);
+    }
+    if ($table_limits[$table]['records_limit']) {
+      // get total records count
+      $records_total = db_result(db_query("SELECT COUNT(*) FROM {". $table ."}"));
+      $records_to_delete = $records_total - $table_limits[$table]['records_limit'];
+      if ($records_to_delete > 0) {
+        // delete records from the end
+        db_query("DELETE FROM {". $table ."} ORDER BY ". $time_column ." ASC LIMIT %d", $records_to_delete);
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function cyd_utils_perm() {
+  return array('access page data', 'access cyd utils logs', 'access cyd test pages');
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function cyd_utils_theme() {
+  return array(
+    'cyd_utils_log_record_type' => array(
+      'template' => 'cyd-utils-log-record-type',
+      'arguments' => array('record' => NULL),
+    ),
+    'cyd_utils_page_tags' => array(
+      'template' => 'cyd-utils-page-tags',
+      'arguments' => array('tags' => array()),
+    ),
+    'cyd_utils_log_list' => array(
+      'arguments' => array('records' => array()),
+    ),
+    'cyd_utils_log_list_page' => array(
+      'arguments' => array('filter_form' => NULL, 'list' => NULL, 'clear_form' => NULL, 'results_count' => array()),
+      'template' => 'cyd-utils-log-list-page',
+    ),
+    'cyd_utils_pages_list_page' => array(
+      'arguments' => array('filter_form' => NULL, 'list' => NULL, 'clear_form' => NULL, 'results_count' => array()),
+      'template' => 'cyd-utils-log-list-page',
+    ),
+    'cyd_utils_page_tags_form' => array(
+      'arguments' => array('form' => array()),
+      'file' => 'cyd_utils.admin.inc',
+    ),
+    'cyd_utils_log_handler_message' => array(
+      'arguments' => array('data' => array()),
+    ),
+    'cyd_utils_log_handler_watchdog' => array(
+      'arguments' => array('data' => array()),
+    ),
+    'cyd_utils_log_handler_database' => array(
+      'arguments' => array('data' => array()),
+    ),
+    'cyd_utils_log_handler_mail' => array(
+      'arguments' => array('data' => array()),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_page_info_collect().
+ */
+function cyd_utils_page_info_collect($op = 'list', $type = NULL) {
+  switch ($op) {
+    case 'list':
+      return array(
+        'php_var_get' => array(
+          'name' => t('%var global variable', array('%var' => '$_GET')),
+        ),
+        'php_var_post' => array(
+          'name' => t('%var global variable', array('%var' => '$_POST')),
+        ),
+        'php_var_server' => array(
+          'name' => t('%var global variable', array('%var' => '$_SERVER')),
+        ),
+        'php_var_request' => array(
+          'name' => t('%var global variable', array('%var' => '$_REQUEST')),
+        ),
+        'php_var_session' => array(
+          'name' => t('%var global variable', array('%var' => '$_SESSION')),
+        ),
+        'drupal_page_timer' => array(
+          'name' => t('Drupal "page" timer, ms'),
+        ),
+        'php_memory_usage' => array(
+          'name' => t('Result of %function function, bytes', array('%function' => 'memory_get_usage()')),
+        ),
+        'php_memory_peak_usage' => array(
+          'name' => t('Result of %function function, bytes', array('%function' => 'memory_get_peak_usage()')),
+        ),
+      );
+      break;
+    case 'collect':
+      switch ($type) {
+        case 'php_var_get':
+          return $_GET;
+        case 'php_var_post':
+          return $_POST;
+        case 'php_var_server':
+          return $_SERVER;
+        case 'php_var_request':
+          return $_REQUEST;
+        case 'php_var_session':
+          return $_SESSION;
+        case 'drupal_page_timer':
+          return timer_read('page');
+        case 'php_memory_usage':
+          return memory_get_usage(TRUE);
+        case 'php_memory_peak_usage':
+          return memory_get_peak_usage(TRUE);
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_page_info_collect_enabled().
+ */
+function cyd_utils_page_info_collect_enabled($path) {
+  $exclude_paths = variable_get('cyd_utils_exclude_collect', '');
+  return !drupal_match_path($path, $exclude_paths);
+}
+
+/**
+ * Implementation of hook_dbprint_enabled().
+ */
+function cyd_utils_dbprint_enabled($path) {
+  $path_parts = explode('/', $path);
+  // We can also check something like user_access('print debug information to db') here.
+  return ($path_parts[0] != 'cyd-utils' || $path_parts[1] != 'get-page-messages-ajax');
+}
+
+/**
+ * Implementation of hook_log_sources().
+ */
+function cyd_utils_log_sources() {
+  return array(
+    'message' => array(
+      'description' => 'Message',
+      'theme callback' => 'cyd_utils_log_handler_message',
+    ),
+    'watchdog' => array(
+      'description' => 'Drupal watchdog',
+      'theme callback' => 'cyd_utils_log_handler_watchdog',
+    ),
+    'database' => array(
+      'description' => 'Database',
+      'theme callback' => 'cyd_utils_log_handler_database',
+    ),
+    'mail' => array(
+      'description' => 'Drupal mail',
+      'theme callback' => 'cyd_utils_log_handler_mail',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_watchdog().
+ */
+function cyd_utils_watchdog($log_entry) {
+  static $watchdog_called;
+  if ($watchdog_called) {
+    cyd_utils_file_log('cyd_utils_watchdog() recursive call!');
+  }
+  $watchdog_called = TRUE;
+  cyd_utils_tag_page('has watchdog');
+  switch ($log_entry['severity']) {
+    case WATCHDOG_WARNING:
+    case WATCHDOG_DEBUG:
+      $is_warning = TRUE;
+      break;
+    case WATCHDOG_EMERG:
+    case WATCHDOG_ALERT:
+    case WATCHDOG_CRITICAL:
+    case WATCHDOG_ERROR:
+      $is_warning = FALSE;
+      break;
+    default:
+      $watchdog_called = FALSE;
+      return;
+  }
+  $watchdog_severities = cyd_utils_watchdog_severity_levels();
+  $severity = $watchdog_severities[$log_entry['severity']];
+  if (!is_array($log_entry['variables']) || empty($log_entry['variables'])) {
+    $watchdog_message = $log_entry['message'];
+  }
+  else {
+    $watchdog_message = str_replace(array_keys($log_entry['variables']), array_values($log_entry['variables']), $log_entry['message']);
+  }
+  $short = 'Watchdog "'. $log_entry['type'] . '" ' . $severity .': '. $watchdog_message;
+  $log_entry['backtrace'] = cyd_utils_get_trace(FALSE, ($log_entry['type'] == 'php')?6:5);
+  cyd_utils_log('watchdog', $short, $log_entry, $is_warning, $log_entry['type'], $severity);
+  $watchdog_called = FALSE;
+}
+
+/**
+ * Implementation of hook_mail_alter().
+ */
+function cyd_utils_mail_alter(&$message) {
+  if (!variable_get('cyd_utils_log_mail', FALSE) || empty($message['id'])) {
+    return;
+  }
+  $short = str_replace(array('!id', '!to'), array($message['id'], $message['to']), 'Sending "!id" email to !to');
+  $message['backtrace'] = cyd_utils_get_trace(FALSE, 4);
+  cyd_utils_log('mail', $short, $message, TRUE);
+}
+
+/**
+ * @} End of hooks.
+ */
+
+/**
+ * @name handlers
+ * @{
+ * Non-hook PHP/menu handlers.
+ */
+
+/**
+ * Custom PHP shutdown handler.
+ *
+ * @see cyd_utils_init()
+ * @see register_shutdown_function()
+ */
+function cyd_utils_shutdown_handler() {
+  // store request time to DB
+  $page = cyd_utils_get_current_page();
+  global $cyd_utils_hook_exit_called;
+  if ($page) {
+    db_query("UPDATE {cyd_utils_pages} SET execution_time=%d WHERE pid=%d", timer_read('page'), $page->pid);
+    if (!$cyd_utils_hook_exit_called) {
+      cyd_utils_tag_page('unclean exit');
+    }
+  }
+  if (variable_get('cyd_utils_watchdog_unclean_script_exit', FALSE) && !$cyd_utils_hook_exit_called) {
+    watchdog('cyd_utils', 'Unclean script termination', array(), WATCHDOG_WARNING);
+  }
+  cyd_utils_collect_info('script end');
+}
+
+/**
+ * Custom PHP error handler.
+ *
+ * @param int $errno
+ * @param string $errstr
+ * @param string $errfile
+ * @param int $errline
+ * @param type $errcontext
+ *
+ * @see cyd_utils_init()
+ * @see set_error_handler()
+ * @see drupal_error_handler()
+ */
+function cyd_utils_error_hadler($errno, $errstr, $errfile = NULL, $errline = 0, $errcontext = array()) {
+  // Copied from drupal_error_handler().
+  if (error_reporting() == 0) {
+    return;
+  }
+  cyd_utils_log_database_errors();
+  global $cyd_utils_old_error_handler;
+  if (!empty($cyd_utils_old_error_handler)) {
+    return $cyd_utils_old_error_handler($errno, $errstr, $errfile, $errline, $errcontext);
+  }
+}
+
+/**
+ * Load callback for stored page request information.
+ *
+ * @param int $pid
+ *   page id to load
+ *
+ * @see cyd_utils_menu()
+ */
+function cyd_utils_page_load($pid) {
+  $page = db_fetch_object(db_query(
+    "SELECT cup.pid, cup.uid, u.name, cup.path, cup.full_path, cup.language, cup.execution_time, cup.request_time, cup.ip_address
+    FROM {cyd_utils_pages} cup
+    INNER JOIN {users} u ON cup.uid=u.uid
+    WHERE pid=%d",
+    $pid
+  ));
+  if (!$page) {
+    return FALSE;
+  }
+  // @TODO: add function cyd_utils_get_page_info() to helper functions.
+  $page->info = array();
+  $info_query = db_query("SELECT * FROM {cyd_utils_page_info} WHERE pid=%d", $pid);
+  while ($info = db_fetch_object($info_query)) {
+    $info->data = unserialize($info->data);
+    $page->info[] = $info;
+  }
+  // @TODO: Load prints.
+  // @TODO: Load tags.
+  return $page;
+}
+
+/**
+ * Load callback for logs.
+ *
+ * @param int $lig
+ *   log record id
+ *
+ * @see cyd_utils_menu()
+ */
+function cyd_utils_log_load($lid) {
+  if (!intval($lid)) {
+    return FALSE;
+  }
+  $log = db_fetch_object(db_query("SELECT * FROM {cyd_utils_logs} WHERE lid=%d", $lid));
+  $log->data = unserialize($log->data);
+  return $log;
+}
+
+/**
+ * @} End of handlers.
+ */
+
+/**
+ * @name api
+ * @{
+ * API functions.
+ */
+
+function cyd_utils_collect_info($context) {
+  global $cyd_utils_initialized;
+  // Cyd_utils_collect_info() may be called from _drupal_bootstrap(), before hook_init().
+  // Some required modules and even core .inc files may be not included yet.
+  if (!$cyd_utils_initialized) {
+    return;
+  }
+  $page = cyd_utils_get_current_page();
+  if (!$page) {
+    return;
+  }
+  $enabled_info_types = variable_get('cyd_utils_info_types', array());
+  if (empty($enabled_info_types[$context])) {
+    return;
+  }
+  foreach (cyd_utils_get_page_info_types() as $type => $type_info) {
+    if (!$enabled_info_types[$context][$type]) {
+      continue;
+    }
+    $collected = module_invoke($type_info['module'], 'page_info_collect', 'collect', $type);
+    $info_record = new stdClass();
+    $info_record->pid = $page->pid;
+    $info_record->context = $context;
+    $info_record->type = $type;
+    $info_record->data = serialize($collected);
+    drupal_write_record('cyd_utils_page_info', $info_record);
+  }
+}
+
+function cyd_utils_get_current_page() {
+  static $page;
+  if (!isset($page)) {
+    if (!variable_get('cyd_utils_store_page_information', FALSE)) {
+      $page = FALSE;
+      return $page;
+    }
+    $module_restrict = module_invoke_all('page_info_collect_enabled', $_GET['q']);
+    if (in_array(FALSE, $module_restrict, TRUE)) {
+      $page = FALSE;
+      return $page;
+    }
+    global $user, $language;
+    $page = new stdClass();
+    $page->uid = $user->uid;
+    $page->path = $_GET['q'];
+    $request_protocol = drupal_strtolower(drupal_substr($_SERVER["SERVER_PROTOCOL"], 0, 5)) == 'https' ? 'https' : 'http';
+    $page->full_path = $request_protocol .'://'. $_SERVER['HTTP_HOST'] . request_uri();
+    $page->language = $language->language;
+    $page->request_time = time();
+    $page->ip_address = ip_address();
+    drupal_write_record('cyd_utils_pages', $page);
+    if (user_access('access page data')) {
+      drupal_add_js(array('cyd_utils_page_id' => $page->pid), 'setting');
+      drupal_add_js(drupal_get_path('module', 'cyd_utils') .'/cyd_utils.js');
+    }
+  }
+  return $page;
+}
+
+/**
+ * Add text tag to current page.
+ *
+ * @param string $tag
+ *   Tag text (max 32 characters).
+ */
+function cyd_utils_tag_page($tag) {
+  static $stored_tags = array();
+  // disallow empty tags
+  if (!$tag) {
+    return;
+  }
+  $page = cyd_utils_get_current_page();
+  if (!$page || isset($stored_tags[$tag])) {
+    return;
+  }
+  db_query("INSERT IGNORE INTO {cyd_utils_page_tags} (pid, tag) VALUES (%d, '%s')", $page->pid, $tag);
+  $stored_tags[$tag] = TRUE;
+}
+
+function cyd_utils_get_page_info_types() {
+  static $info_types;
+  if (!isset($info_types)) {
+    $info_types = array();
+    foreach (module_implements('page_info_collect') as $module) {
+      $modue_types = module_invoke($module, 'page_info_collect', 'list');
+      foreach ($modue_types as $type => $type_info) {
+        $type_info['module'] = $module;
+        $info_types[$type] = $type_info;
+      }
+    }
+  }
+  return $info_types;
+}
+
+/**
+ * Print stack trace without function arguments.
+ */
+function cyd_utils_print_trace() {
+  dpm(cyd_utils_get_trace(TRUE, 2));
+}
+
+/**
+ * Get stack trace information.
+ *
+ * @param $remove_args
+ *   Boolean Remove function arguments from result.
+ * @param $depth
+ *   How many items should be removed from stack to point to important function,
+ *   for which you want to see a trace.
+ *
+ * @return Array
+ *   Stack trace array.
+ */
+function cyd_utils_get_trace($remove_args = TRUE, $depth = 1) {
+  $trace = array_slice(debug_backtrace(), $depth);
+  if ($remove_args) {
+    cyd_utils_trace_remove_args($trace);
+  }
+  return $trace;
+}
+
+/**
+ * Write log record to database.
+ *
+ * @param $source
+ *   Log source from hook_log_sources().
+ * @param $short
+ *   Short description.
+ * @param $data
+ *   Array of data required for log type callback
+ * @param $is_warning
+ *   Boolean indicating whether this log is warning.
+ */
+function cyd_utils_log($source, $short, $data = array(), $is_warning = FALSE, $type = NULL, $subtype = NULL) {
+  $record = new stdClass();
+  $record->source = $source;
+  $record->is_warning = $is_warning?1:0;
+  $record->log_time = time();
+  $record->message = $short;
+  $record->data = $data;
+  $record->type = $type;
+  if ($type) {
+    $record->subtype = $subtype;
+  }
+  if ($page = cyd_utils_get_current_page()) {
+    $record->page = $page->pid;
+  }
+  drupal_write_record('cyd_utils_logs', $record);
+}
+
+/**
+ * Write a simple message log.
+ *
+ * @param $short
+ *   Short description, unescaped text (i.e. don't use check_plain()).
+ * @param $text
+ *   Message text.
+ * @param $text
+ *   Array of t() placeholders.
+ * @param $is_warning
+ *   Boolean indicating whether this log is warning.
+ * @param $type
+ *   Arbitrary message type (string).
+ */
+function cyd_utils_log_message($short, $text, $args, $is_warning = FALSE, $type = NULL) {
+  $data = array(
+    'short' => $short,
+    'text' => $text,
+    'args' => $args,
+    'backtrace' => cyd_utils_get_trace(FALSE, 2),
+  );
+  cyd_utils_log('message', $short, $data, $is_warning, $type);
+}
+
+/**
+ * Print a variable to database and link it to current page.
+ *
+ * @param $input
+ *   Variable to print (any type).
+ * @param $name
+ *   Variable name (message title).
+ */
+function dpdb($input, $name = '') {
+  if (!($page = cyd_utils_get_current_page()) || !cyd_utils_page_dbprint_is_enabled($_GET['q'])) {
+    return;
+  }
+  cyd_utils_tag_page('has print');
+  $print_record = new stdClass();
+  $print_record->pid = $page->pid;
+  $print_record->title = $name;
+  $print_record->time = time();
+  $print_record->data = $input;
+  $result = drupal_write_record('cyd_utils_prints', $print_record);
+}
+
+/**
+ * Store debug data into a file.
+ *
+ * @param string $text
+ *   text message
+ * @param string $file
+ *   filename
+ * @param bool $add_backtrace
+ *   add backtrace or not
+ *
+ * @return bool TRUE, if message was successfully saved
+ */
+function cyd_utils_file_log($text, $file = NULL, $add_backtrace = TRUE) {
+  $files_dir = variable_get('file_directory_path', 'sites/default/files');
+  if (!$file) {
+    $file = $files_dir . DIRECTORY_SEPARATOR . 'cyd_utils.log';
+  }
+  // write time
+  $out = '['. cyd_utils_format_date(time(), FALSE) .'] ';
+  $out .= $text ."\nBacktrace:\n";
+  if ($add_backtrace) {
+    foreach(cyd_utils_get_trace(FALSE, 1) as $func) {
+      $file_line = array();
+      if (!empty($func['file'])) {
+        $file_line[] = $func['file'];
+      }
+      if (!empty($func['line'])) {
+        $file_line[] = $func['line'];
+      }
+      $file_line_text = implode(':', $file_line);
+      $out .= $func['function'] .'()'. ((!empty($file_line_text))?(' called from '. $file_line_text):'') ."\n";
+    }
+  }
+  $out .= "-------------------------------\n";
+  return (file_put_contents($file, $out, FILE_APPEND) > 0);
+}
+
+/**
+ * @} End of api.
+ */
+
+/**
+ * @name helper
+ * @{
+ * Helper functions.
+ */
+
+function cyd_utils_page_dbprint_is_enabled($path) {
+  static $paths = array();
+  if (!isset($paths[$path])) {
+    $paths[$path] = !in_array(FALSE, module_invoke_all('dbprint_enabled', $path));
+  }
+  return $paths[$path];
+}
+
+/**
+ * Get page tags.
+ *
+ * @param $pid
+ *   page id
+ *
+ * @return array
+ *   array of tags.
+ */
+function cyd_utils_get_page_tags($pid) {
+  $tags = array();
+  $rows = db_query("SELECT tag FROM {cyd_utils_page_tags} WHERE pid=%d", $pid);
+  while ($tag = db_result($rows)) {
+    $tags[] = $tag;
+  }
+  return $tags;
+}
+
+/**
+ * Fetch log records written on given page.
+ *
+ * @param int $pid
+ *   page id
+ *
+ * @return array
+ *   array of objects (log records from DB)
+ */
+function cyd_utils_get_page_log_records($pid) {
+  $records = array();
+  $rows = db_query("SELECT lid, source, is_warning, log_time, message, page, type, subtype FROM {cyd_utils_logs} WHERE page = %d", $pid);
+  while ($record = db_fetch_object($rows)) {
+    $records[] = $record;
+  }
+  return $records;
+}
+
+/**
+ * Get all prints for page.
+ *
+ * @param int $pid
+ *   page id
+ *
+ * @return array
+ *   array of prints (objects)
+ */
+function cyd_utils_get_page_prints($pid) {
+  $prints = array();
+  $rows = db_query("SELECT * FROM {cyd_utils_prints} WHERE pid=%d", $pid);
+  while ($row = db_fetch_object($rows)) {
+    $row->data = unserialize($row->data);
+    $prints[] = $row;
+  }
+  return $prints;
+}
+
+/**
+ * Helper function.
+ *
+ * @return
+ *   Array of the possible severity levels for log messages, untranslated.
+ *
+ * @see watchdog()
+ * @see watchdog_severity_levels()
+ */
+function cyd_utils_watchdog_severity_levels() {
+  return array(
+    WATCHDOG_EMERG    => 'emergency',
+    WATCHDOG_ALERT    => 'alert',
+    WATCHDOG_CRITICAL => 'critical',
+    WATCHDOG_ERROR    => 'error',
+    WATCHDOG_WARNING  => 'warning',
+    WATCHDOG_NOTICE   => 'notice',
+    WATCHDOG_INFO     => 'info',
+    WATCHDOG_DEBUG    => 'debug',
+  );
+}
+
+/**
+ * Remove arguments from trace array.
+ *
+ * @param $trace
+ *   Backtrace array as returned from debug_backtrace().
+ */
+function cyd_utils_trace_remove_args(&$trace) {
+  foreach ($trace as &$element) {
+    unset($element['args']);
+  }
+  return $trace;
+}
+
+/**
+ * Check for DB errors an log them.
+ */
+function cyd_utils_log_database_errors() {
+  // detect DB type
+  global $db_url, $db_type, $active_db;
+  // get db error
+  $db_error_code = 0;
+  $db_error_message = '';
+  $db_settings = array();
+  switch ($db_type) {
+    case 'mysql':
+      if ($db_error_code = mysql_errno()) {
+        $db_error_message = mysql_error();
+        $log_data = array(
+          'code' => $db_error_code,
+          'original_message' => $db_error_message,
+          'db_settings' => ini_get_all('mysql'),
+          'db_stat' => mysql_stat($active_db),
+        );
+      }
+      break;
+    case 'mysqli':
+      if ($db_error_code = mysqli_errno($active_db)) {
+        $db_error_message = mysqli_error($active_db);
+        $log_data = array(
+          'code' => $db_error_code,
+          'db_stat' => mysqli_stat($active_db),
+          'original_message' => $db_error_message,
+          'db_settings' => ini_get_all('mysqli'),
+        );
+      }
+      break;
+  }
+  if ($db_error_code) {
+    $log_data['backtrace'] = cyd_utils_get_trace(FALSE, 4);
+    $log_data['db_type'] = $db_type;
+    $log_data['message'] = t('Database error: @error (error code @code)', array('@error' => $db_error_message, '@code' => $db_error_code));
+    $connect_url = is_array($db_url) ? $db_url['default'] : $db_url;
+    $log_data['connect_url'] = preg_replace('/:[^:@]+@/', ':****@', $connect_url);
+    cyd_utils_log('database', $log_data['message'], $log_data, 0, $db_type, $db_error_code);
+  }
+}
+
+/**
+ * @} End of helper.
+ */
+
+/**
+ * @name formatting
+ * @{
+ * Formatting functions.
+ */
+
+/**
+ * Pretty print data to a variable.
+ *
+ * @param mixed $Data
+ *   mixed Data to print.
+ *
+ * @return String Formatted output.
+ */
+function cyd_utils_print($data) {
+  if (function_exists('kprint_r')) {
+    return kprint_r($data, TRUE);
+  }
+  else {
+    return '<pre>'. var_export($data, TRUE) .'</pre>';
+  }
+}
+
+/**
+ * Format date/time.
+ *
+ * @param int timestamp
+ *   timestamp to format
+ * @param bool $allow_html
+ *   wrap or not result to <nobr> tag
+ *
+ */
+function cyd_utils_format_date($timestamp, $allow_html = TRUE) {
+  //return format_date($timestamp, 'small');
+  if (!isset($timezone)) {
+    global $user;
+    if (variable_get('configurable_timezones', 1) && $user->uid && strlen($user->timezone)) {
+      $timezone = $user->timezone;
+    }
+    else {
+      $timezone = variable_get('date_default_timezone', 0);
+    }
+  }
+  $result = @strftime('%G-%m-%d %H:%M:%S', $timestamp);
+  if ($allow_html) {
+    $result = '<nobr>'. $result .'</nobr>';
+  }
+  return $result;
+}
+
+/**
+ * Format time (in seconds).
+ *
+ * @param int $time
+ *   time in milliseconds
+ */
+function cyd_utils_format_time($time) {
+  if ($time == NULL) {
+    return '';
+  }
+  return number_format($time / 1000, 3);
+}
+
+/**
+ * @} End of formatting.
+ */
+
+/**
+ * @name theme
+ * @{
+ * Preprocess functions and theming.
+ */
+
+/**
+ * Theme function for 'cyd_utils_log_handler_message'.
+ */
+function theme_cyd_utils_log_handler_message($data) {
+  return t($data['text'], $data['args']);
+}
+
+/**
+ * Theme function for 'cyd_utils_log_handler_watchdog'.
+ */
+function theme_cyd_utils_log_handler_watchdog($data) {
+  $watchdog_severities = watchdog_severity_levels();
+  $watchdog_message = t($data['message'], $data['variables']);
+  $ip = l($data['ip'], 'http://www.db.ripe.net/whois?form_type=simple&full_query_string=&do_search=Search&searchtext='. $data['ip'], array('external' => TRUE));
+  $user = $data['user']->uid?l($data['user']->name, 'user/'. $data['user']->uid):$data['user']->name;
+  $result = t('Watchdog %type @severity: !message', array('%type' => $data['type'], '@severity' => $watchdog_severities[$data['severity']], '!message' => $watchdog_message));
+  $result .= '<br />'. t('Link') .': '. l($data['link'], $data['link']);
+  $result .= '<br />'. t('Request URI') .': '. l($data['request_uri'], $data['request_uri']);
+  $result .= '<br />'. t('Referer') .': '. l($data['referer'], $data['referer']);
+  $result .= '<br />'. t('IP') .': '. $ip;
+  $result .= '<br />'. t('User') .': '. $user . cyd_utils_print($data['user']);
+  return $result;
+}
+
+/**
+ * Theme function for 'cyd_utils_log_handler_database'.
+ * Log handler for "database" log source.
+ *
+ * @param object $data
+ *   log record data
+ */
+function theme_cyd_utils_log_handler_database($data) {
+  $chunks = array(
+    $data['message'],
+  );
+  if (!empty($data['db_type'])) {
+    $chunks[] = t('Database type'). ': '. $data['db_type'];
+  }
+  if (!empty($data['db_stat'])) {
+    $chunks[] = t('Database status'). ': '. $data['db_stat'];
+  }
+  if (!empty($data['connect_url'])) {
+    $chunks[] = t('Connect url'). ': '. $data['connect_url'];
+  }
+  if (!empty($data['db_settings'])) {
+    $chunks[] = t('PHP DB settings') .':';
+    $rows = array();
+    foreach ($data['db_settings'] as $key => $values) {
+      $rows[] = array(
+        $key,
+        $values['global_value'],
+        $values['local'],
+        $values['access'],
+      );
+    }
+    $chunks[] = theme('table', array(t('Name'), t('Global value'), t('Local value'), t('Access')), $rows);
+  }
+
+  return implode('<br/>', $chunks);
+}
+
+/**
+ * Theme function for 'cyd_utils_log_handler_mail'.
+ * Log handler for "mail" log source.
+ *
+ * @param object $data
+ *   log record data
+ */
+function theme_cyd_utils_log_handler_mail($data) {
+  $result = t('Sending %id email from !from to !to', array('%id' => $data['id'], '!to' => $data['to'], '!from' => $data['from']));
+  $result .= '<br /><br />'. t('Subject') .': '. $data['subject'];
+  $body = is_array($data['body']) ? drupal_wrap_mail(implode("\n\n", $data['body'])) : drupal_wrap_mail($data['body']);
+  $body = nl2br($body);
+  $result .= '<br />'. t('Body') .': <br />'. $body;
+  $result .= '<br /><br />'. t('Headers') .': '. cyd_utils_print($data['headers']);
+  return $result;
+}
+
+/**
+ * Theme callback for 'cyd_utils_log_list' handler.
+ *
+ * @param array $records
+ *   array of log records, as fetched from db
+ */
+function theme_cyd_utils_log_list($records) {
+  $log_types = module_invoke_all('log_sources');
+  $table_header = array(
+    array(
+      'data' => t('Type'),
+      'colspan' => 2,
+    ),
+    t('Short description'),
+    t('Time'),
+  );
+  $rable_rows = array();
+  foreach ($records as $record) {
+    if (isset($log_types[$record->source])) {
+      $type_link_title = t($log_types[$record->source]['description']);
+    }
+    else {
+      $type_link_title = t($record->source);
+    }
+    $table_rows[] = array(
+      theme('cyd_utils_log_record_type', $record),
+      l('<nobr>'. implode('<br/>', array_filter(array($type_link_title, $record->type, $record->subtype))) .'</nobr>', 'admin/settings/cyd-utils/logs/'. $record->lid, array('html' => TRUE)),
+      $record->message,
+      cyd_utils_format_date($record->log_time),
+    );
+  }
+  return theme('table', $table_header, $table_rows, array('class' => 'cyd-utils-log-recods-table'));
+}
+
+/**
+ * @} End of theme.
+ */

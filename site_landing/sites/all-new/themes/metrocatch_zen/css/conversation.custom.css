@@ -1,0 +1,194 @@
+
+.metrocatch-conversation-entry,
+.metrocatch-conversation-entry a {
+  color: #3f3f3f;
+}
+
+.metrocatch-conversation-entry .comment
+.metrocatch-conversation-entry .comment a {
+  color: #e7e5e5;
+}
+
+.metrocatch-conversation-feeds a {
+  padding: 0 5px;
+}
+
+#metrocatch-converstion-new-entry-form  {
+  margin-left: 15px;
+  margin-top: 12px;
+  margin: 12px 0 13px 15px;
+}
+
+#metrocatch-converstion-new-entry-form .form-item {
+  margin: 0;
+}
+
+#metrocatch-converstion-new-entry-form .textfield-placeholder-wrapper {
+  margin-top: 8px;
+  margin-left: 2px;
+}
+
+/**
+ * Remove * from required fields.
+ */
+.metrocatch-conversation-page span.form-required {
+  display: none;
+}
+
+.metrocatch-conversation-page textarea {
+  width: 613px;
+  min-height: 61px; 
+}
+
+.textarea-identifier.description {
+  display: none;
+}
+
+.metrocatch-conversation-entry {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #fbfcfc;
+}
+
+.metrocatch-conversation-entry-inner {
+  border-top: 1px solid #a9a9a9;
+  padding: 13px 0 0 22px;
+}
+
+.metrocatch-conversation-entry.odd {
+  background: #d8d8d8;
+}
+
+.metrocatch-conversation-entry.even {
+  background: #cbcbcb;
+}
+
+.metrocatch-conversation-entry-author,
+.metrocatch-conversation-entry-author a {
+  color: #2f2f2f;
+  font-size: 11px;
+}
+
+.metrocatch-conversation-entry-author .username {
+  margin-top: 4px;
+}
+
+.metrocatch-conversation-entry-author {
+  margin-right: 23px;
+}
+
+.metrocatch-conversation-entry .node {
+  padding-top: 15px;
+  padding-bottom: 20px;
+  margin-bottom: 10px;
+}
+
+.metrocatch-conversation-entry-content {
+  position: relative;
+  min-height: 75px;
+}
+
+.conversation-entry-links {
+  font-size: 12px;
+  margin: 0;
+  position: absolute;
+  bottom: 0;
+  left: 93px;
+}
+
+.conversation-entry-links a {
+  color: #7556c0;
+  padding: 0 6px;
+}
+
+.conversation-entry-links a:first-child {
+  padding-left: 0;
+}
+
+.metrocatch-conversation-entry .add-comment-form-wrapper {
+  clear: both;
+  display: none; /* hidden by default */
+}
+
+.metrocatch-conversation-entry .comment_wrapper {
+  clear: both;
+  margin: 17px 0 0 -22px;
+}
+
+.metrocatch-conversation-entry .comment {
+  background: #a0a0a0;
+  padding: 5px;
+  margin: 0;
+  border-bottom: 1px solid #c4c4c4;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.metrocatch-conversation-entry .comment,
+.metrocatch-conversation-entry .comment a {
+  color: #e7e5e5;
+}
+
+.metrocatch-conversation-entry .comment a {
+  font-weight: bold;
+}
+
+.metrocatch-conversation-entry .comment.last {
+  border-bottom: 0;
+}
+
+.metrocatch-conversation-entry .comment .content {
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+.metrocatch-conversation-entry .comment-left-column {
+  float: left;
+  margin: 0 12px 0 20px;
+}
+
+.metrocatch-conversation-entry .comment-right-column {
+  margin-top: 2px;
+}
+
+.metrocatch-conversation-entry .metrocatch-profile-default-picture {
+  border: 3px solid #fff;
+}
+
+.metrocatch-conversation-entry .attachment-title {
+  font-weight: bold;
+}
+
+.metrocatch-conversation-entry .facebook-attachment {
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.metrocatch-conversation-entry .attachment-title {
+  padding-bottom: 5px;
+}
+
+.metrocatch-conversation-entry .attachment-media-wrapper {
+  float: left;
+  margin-right: 10px;
+  position: relative;
+  left: -1px;
+  top: 3px;
+}
+
+.metrocatch-conversation-entry .attachment-media img {
+  width: 71px;
+  height: 41px;
+}
+
+.metrocatch-conversation-entry .attachment-other-media .attachment-media {
+  float: left;
+  margin-right: 15px;
+}
+
+.metrocatch-conversation-entries {
+  margin-left: -8px;
+  margin-right: -21px;
+}

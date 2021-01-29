@@ -1,0 +1,1572 @@
+<?php
+/**
+ * @file
+ * General function and hook implementations
+ */
+
+/**
+ * Module description.
+ *
+ * This module provides next features/functionality:
+ *   - Per-user private fields. Administrator can select checkbox
+ *     "allow user to make this field private" for each CCK field, and after that
+ *     each user can manage visibility of own field for other users
+ *     (used for several profile fields)
+ *   - Hide username from registration form and generate dummy username from email
+ *   - Replace username by firstname on user load
+ *   - Provides "User short info" block - used on many user pages
+ */
+
+include_once('metrocatch_profile.features.inc');
+
+/**
+ * @name hooks Hook implementations.
+ * @{
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function metrocatch_profile_menu() {
+  return array(
+    'profile/edit' => array(
+      'title' => 'Edit Profile',
+      'page callback' => 'metrocatch_profile_edit_profile',
+      'access callback' => 'user_is_logged_in',
+      'menu_name' => 'primary-links',
+      'parent' => '',
+    ),
+    'admin/metrocatch' => array(
+      'title' => 'metrocatch',
+      'description' => 'metrocatch settings.',
+      'position' => 'left',
+      'page callback' => 'system_admin_menu_block_page',
+      'access arguments' => array('administer metrocatch'),
+      'file' => 'system.admin.inc',
+      'file path' => drupal_get_path('module', 'system'),
+    ),
+    'user/register/%/profile' => array(
+      'type' => MENU_CALLBACK,
+      'title' => 'Complete registration',
+      'access callback' => 'drupal_valid_token',
+      'access arguments' => array(4, 2),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_profile_complete_form', 2),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_menu_alter().
+ */
+function metrocatch_profile_menu_alter(&$items) {
+  // create "profile" link
+  $items['profile'] = $items['user'];
+  $items['profile']['menu_name'] = 'primary-links';
+  $items['profile']['access callback'] = 'user_is_logged_in';
+  $items['profile']['title'] = 'Profile';
+  $items['profile']['module'] = 'user';
+  $items['profile']['type'] = MENU_NORMAL_ITEM;
+  return $items;
+}
+
+/**
+ * Implementation of hook_init().
+ */
+function metrocatch_profile_init() {
+  global $user;
+  $user->metrocatch_profile_realname = $user->name;
+  $user->name = metrocatch_profile_get_user_name($user->uid);
+  if ($user->uid) {
+    $user->sex = metrocatch_profile_get_user_sex($user->uid);
+    $user->preference = metrocatch_profile_get_user_preference($user->uid);
+  }
+}
+
+/**
+ * Implementation of hook_cron().
+ *
+ * Here we get all users who have a birthday today. For each birthday person
+ * it invokes 'metrocatch_profile_birthday_soon' hook.
+ */
+function metrocatch_profile_cron() {
+  $now = time();
+  $last_birthday_notification = variable_get('metrocatch_profile_last_birthday_notification', FALSE);
+  if (!$last_birthday_notification || date('z', $last_birthday_notification) != date('z', $now)) {
+    variable_set('metrocatch_profile_last_birthday_notification', $now);
+    $result = db_query(
+      "SELECT u.uid
+      FROM {users} u
+      INNER JOIN {node} n ON n.uid = u.uid AND n.type = 'profile'
+      INNER JOIN {content_type_profile} p ON p.vid = n.vid
+      WHERE u.status <> 0
+      AND (DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(0), INTERVAL p.field_profile_birth_date_value SECOND), '%m-%%d') = DATE_FORMAT(NOW(),'%m-%%d')
+      OR (
+          (
+            DATE_FORMAT(NOW(),'%Y') % 4 <> 0
+            OR (
+              DATE_FORMAT(NOW(),'%Y') % 100 = 0
+              AND DATE_FORMAT(NOW(),'%Y') % 400 <> 0
+            )
+          )
+          AND DATE_FORMAT(NOW(),'%m-%%d') = '03-01'
+          AND DATE_FORMAT(DATE_ADD(FROM_UNIXTIME(0), INTERVAL p.field_profile_birth_date_value SECOND), '%m-%%d') = '02-29'
+        )
+      )");
+    while ($uid_of_birthday_person = db_result($result)) {
+      module_invoke_all('metrocatch_profile_birthday_soon', $uid_of_birthday_person);
+    }
+  }
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function metrocatch_profile_theme() {
+  return array(
+    'metrocatch_profile_picture' => array(
+      'arguments' => array('presetname' => NULL, 'account' => NULL, 'attributes' => array(), 'canvas' => NULL, 'link_to_profile' => TRUE),
+      'template' => 'metrocatch-profile-picture',
+    ),
+    'metrocatch_profile_moreinfo' => array(
+      'arguments' => array('user_id' => NULL),
+      'template' => 'metrocatch-profile-moreinfo',
+    ),
+    'metrocatch_profile_baseinfo' => array(
+      'arguments' => array('uid' => NULL),
+    ),
+    'metrocatch_profile_account_form' => array(
+      'arguments' => array('form' => NULL),
+      'template' => 'metrocatch-profile-account-form',
+    ),
+    'metrocatch_profile_registration_form' => array(
+      'arguments' => array('form' => NULL),
+      'template' => 'metrocatch-profile-registration-form',
+    ),
+    'metrocatch_profile_full_moreinfo' => array(
+      'arguments' => array('account' => NULL),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function metrocatch_profile_perm() {
+  return array('administer metrocatch');
+}
+
+/**
+ * Implementation of hook_content_fieldapi().
+ */
+function metrocatch_profile_content_fieldapi($op, $field) {
+  if ($op == 'delete instance') {
+    // delete all records from {metrocatch_profile_field_permissions} table
+    db_query("DELETE FROM {metrocatch_profile_field_permissions} WHERE field_name='%s'", $field['field_name']);
+  }
+}
+
+/**
+ * Implementation of hook_user().
+ */
+function metrocatch_profile_user($op, &$edit, &$account, $category = NULL) {
+  switch ($op) {
+    case 'validate':
+      if (isset($account->metrocatch_profile_realname)) {
+        $edit['name'] = $account->metrocatch_profile_realname;
+      }
+      break;
+    case 'load':
+      $account->metrocatch_profile_realname = $account->name;
+      $account->name = metrocatch_profile_get_user_name($account->uid);
+      $account->path = 'user/'. $account->uid;
+      $account->sex = metrocatch_profile_get_user_sex($account->uid);
+      $account->preference = metrocatch_profile_get_user_preference($account->uid);
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_field_access().
+ */
+function metrocatch_profile_field_access($op, $field, $account, $node = NULL) {
+  if ($account->uid == 1) {
+    return TRUE;
+  }
+  if (empty($node)) {
+    return TRUE;
+  }
+  if ($account->uid == $node->uid) {
+    // always show field to owner
+    return TRUE;
+  }
+  if ($op == 'view') {
+    $privacy = metrocatch_profile_field_is_private($node->uid, $field['field_name']);
+    if (!$privacy) {
+      return TRUE; // No privacy settings were specified, field is public.
+    }
+    switch (intval($privacy)) {
+      // Public to *ACTIVE* connections.
+      case 2:
+        if (metrocatch_connect_users_are_connected($account->uid, $node->uid)) {
+          return TRUE;
+        }
+      // Field is private.
+      case 1:
+        return FALSE;
+    }
+  }
+  return TRUE;
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function metrocatch_profile_form_alter(&$form, $form_state, $form_id) {
+  // For all node creation forms change $node->name field.
+  if (isset($form['#node']) && empty($form['#node']->nid) && $form_id == ($form['#node']->type . '_node_form')) {
+    $author = user_load($form['#node']->uid);
+    $form['#node']->name = $author->metrocatch_profile_realname;
+    $form['author']['name']['#default_value'] = $author->metrocatch_profile_realname;
+  }
+  // Add 'Make private' checkboxes for necessary fields.
+  if ($form_id == 'user_register' || $form_id == 'profile_node_form') {
+    $type = content_types('profile');
+    if (!empty($type['fields'])) {
+      $uid = ($form_id == 'user_register' ? $form['#uid'] : $form['#node']->uid);
+      $access_settings = variable_get('metrocatch_profile_private_fields', array());
+      // For some fields add 'Make private' checkbox.
+      foreach ($access_settings as $field_name => $true) {
+        if (isset($form[$field_name])) {
+          if ($field_name == 'field_profile_birth_date') {
+            $default_value = metrocatch_profile_field_is_private($uid, $field_name);
+            if ($default_value === FALSE) {
+              $default_value = '2';
+            }
+            $form[$field_name .'_make_private'] = array(
+              '#type' => 'radios',
+              '#default_value' => (empty($uid) ? '2' : $default_value),
+              '#options' => array(
+                '2' => t('Make Private (Displays only to Connections)'),
+                '1' => t('Never Display'),
+              ),
+              '#weight' => $form[$field_name]['#weight'] + 0.001,
+            );
+          }
+          else {
+            $form[$field_name .'_make_private'] = array(
+              '#type' => 'checkbox',
+              '#title' => t('Make Private'),
+              '#default_value' => (empty($uid) ? '0' : metrocatch_profile_field_is_private($uid, $field_name)),
+              '#weight' => $form[$field_name]['#weight'] + 0.001,
+            );
+          }
+          if ($field_name == 'field_profile_heighborhood' || $field_name == 'field_profile_state') {
+            $form[$field_name .'_make_private']['#access'] = FALSE;
+          }
+        }
+      }
+      if ($form_id == 'profile_node_form') {
+        if (!is_array($form['buttons']['submit']['#submit'])) {
+          $form['buttons']['submit']['#submit'] = array();
+        }
+        $form['buttons']['submit']['#submit'][] = 'metrocatch_profile_node_form_submit';
+      }
+      else {
+        $form['#submit'][] = 'metrocatch_profile_node_form_submit';
+      }
+    }
+    if (isset($form['field_profile_birth_date'])) {
+      // Fix validation error messages.
+      $form['field_profile_birth_date'][0]['#process'] = array('date_combo_process', 'metrocatch_profile_birthday_process');
+      // Validate user age
+      $form['field_profile_birth_date'][0]['#element_validate'][] = 'metrocatch_profile_validate_age';
+    }
+  }
+  if ($form_id == 'profile_node_form') {
+    // Users can not change profile node title.
+    $form['title']['#access'] = FALSE;
+  }
+  // customizations of username
+  switch ($form_id) {
+    case 'user_register':
+      // We do not use Drupal user names.
+      $form['name']['#type'] = 'hidden';
+      $form['name']['#default_value'] = uniqid(mt_rand(), TRUE);
+      // Picture/avatar:
+      if (variable_get('user_pictures', 0)) {
+        $form['picture'] = array(
+          '#type' => 'fieldset',
+          '#title' => t('Picture'),
+          '#weight' => 1,
+        );
+        $form['picture']['picture_upload'] = array('#type' => 'file', '#title' => t('Upload picture'), '#size' => 48, '#description' => t('Your virtual face or picture. Maximum dimensions are %dimensions and the maximum size is %size kB.', array('%dimensions' => variable_get('user_picture_dimensions', '85x85'), '%size' => variable_get('user_picture_file_size', '30'))) .' '. variable_get('user_picture_guidelines', ''));
+        // Validate profile picture.
+        $form['#validate'][] = 'metrocatch_profile_user_picture_validate';
+        // Additional submit handler for picture support.
+        $form['#submit'][] = 'metrocatch_profile_user_picture_submit';
+        // Additional submit handler for picture support: save picture in database.
+        $form['#submit'][] = 'metrocatch_profile_user_picture_save';
+        $form['#submit'][] = 'metrocatch_profile_redirect_to_second_step';
+        // Allow file uploads.
+        $form['#attributes']['enctype'] = 'multipart/form-data';
+        // The same class as profile edition form.
+        $form['#attributes']['class'] = 'metrocatch-profile-form';
+        $form['save_and_proceed'] = array(
+          '#type' => 'submit',
+          '#value' => t('Continue'),
+        );
+      }
+      // 'Agree to terms of service' checkbox.
+      $form['agree_terms'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('I have read and agree to metrocatch\'s <a href="/terms-of-service">Terms of Service</a>'),
+        '#default_value' => '0',
+        '#element_validate' => array('metrocatch_profile_agree_terms_validate'),
+      );
+      $second_step_fields = metrocatch_profile_second_step_fields();
+      $hidden_fields = array(
+        'field_profile_college',
+        'field_profile_employment',
+        'field_profile_favorite_tv_shows',
+        'field_profile_graduate_school',
+        'field_profile_high_scool',
+        'field_profile_neighborhood',
+        'field_profile_neighborhood_state',
+        'field_profile_state',
+      );
+      $fields_to_unset = array_merge($second_step_fields, $hidden_fields);
+      foreach ($fields_to_unset as $field_to_unset) {
+        unset($form[$field_to_unset]);
+      }
+      array_unshift($form['#submit'], 'metrocatch_profile_registration_form_submit');
+      $form['#theme'] = 'metrocatch_profile_registration_form';
+      break;
+    case 'user_login':
+      $form['name']['#title'] = t('E-mail address');
+      $form['name']['#description'] = t('You may login with your e-mail address.');
+      break;
+    case 'profile_node_form':
+      $profile = $form['#node'];
+      $form['#uid'] = $profile->uid;
+      if (isset($profile->nid) && !user_access('administer metrocatch')) {
+        foreach (_metrocatch_profile_get_permanent_fields() as $field) {
+          $def = content_fields($field, 'profile');
+          $form[$field] = array(
+            '#value' => content_view_field($def, $profile),
+            '#weight' => $form[$field]['#weight'],
+          );
+        }
+      }
+      if (isset($profile->nid)) {
+        $form['#submit'][] = 'metrocatch_profile_profile_changed';
+      }
+      $form['#account'] = $account = user_load($profile->uid);
+      $edit = (array) $form['#account'];
+      $form['account'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Account'),
+        'mail' => array(
+          '#type' => 'textfield',
+          '#title' => t('E-mail address'),
+          '#default_value' => $edit['mail'],
+          '#maxlength' => EMAIL_MAX_LENGTH,
+          '#description' => t('A valid e-mail address. All e-mails from the system will be sent to this address. The e-mail address is not made public and will only be used if you wish to receive a new password or wish to receive certain news or notifications by e-mail.'),
+          '#required' => TRUE,
+        ),
+        'pass' => array(
+          '#type' => 'password_confirm',
+          '#description' => t('To change the current user password, enter the new password in both fields.'),
+          '#size' => 25,
+        ),
+      );
+      // Signature:
+      if (variable_get('user_signatures', 0) && module_exists('comment')) {
+        $form['account']['signature_settings'] = array(
+          '#type' => 'fieldset',
+          '#title' => t('Signature settings'),
+          '#weight' => 1,
+        );
+        $form['account']['signature_settings']['signature'] = array(
+          '#type' => 'textarea',
+          '#title' => t('Signature'),
+          '#default_value' => $edit['signature'],
+          '#description' => t('Your signature will be publicly displayed at the end of your comments.'),
+        );
+
+        // Prevent a "validation error" message when the user attempts to save with a default value they
+        // do not have access to.
+        if (!filter_access($edit['signature_format']) && empty($_POST)) {
+          drupal_set_message(t("The signature input format has been set to a format you don't have access to. It will be changed to a format you have access to when you save this page."));
+          $edit['signature_format'] = FILTER_FORMAT_DEFAULT;
+        }
+
+        $form['account']['signature_settings']['signature_format'] = filter_form($edit['signature_format'], NULL, array('signature_format'));
+      }
+      // Picture/avatar:
+      if (variable_get('user_pictures', 0)) {
+        $form['account']['picture'] = array('#type' => 'fieldset', '#title' => t('Picture'), '#weight' => 1);
+        if (!empty($account->picture)) {
+          $picture = theme('metrocatch_profile_picture', 'userpic_small', $account);
+          $form['account']['picture']['current_picture'] = array('#value' => $picture);
+          $form['account']['picture']['picture_delete'] = array('#type' => 'checkbox', '#title' => t('Delete picture'), '#description' => t('Check this box to delete your current picture.'));
+        }
+        else {
+          $form['account']['picture']['picture_delete'] = array('#type' => 'hidden');
+        }
+        $form['account']['picture']['picture_upload'] = array('#type' => 'file', '#title' => t('Upload picture'), '#size' => 48, '#description' => t('Your virtual face or picture. Maximum dimensions are %dimensions and the maximum size is %size kB.', array('%dimensions' => variable_get('user_picture_dimensions', '85x85'), '%size' => variable_get('user_picture_file_size', '30'))) .' '. variable_get('user_picture_guidelines', ''));
+        // Validate profile picture.
+        $form['#validate'][] = 'metrocatch_profile_user_picture_validate';
+        // Additional submit handler for picture support.
+        $form['#submit'][] = 'metrocatch_profile_user_picture_submit';
+      }
+      // Join necessary JS files.
+      _user_password_dynamic_validation();
+      // Additional handlers for the account fields.
+      array_unshift($form['#validate'], 'metrocatch_profile_user_profile_form_validate');
+      $form['#submit'][] = 'metrocatch_profile_user_profile_form_submit';
+      if (empty($form['#after_build'])) {
+        $form['#after_build'] = array();
+      }
+      // Allow file uploads.
+      $form['#attributes']['enctype'] = 'multipart/form-data';
+      // The same class as registration form.
+      $form['#attributes']['class'] = 'metrocatch-profile-form';
+      // Theme form output.
+      $form['#theme'] = 'metrocatch_profile_account_form';
+      unset($form['account']['mail']['#description'], $form['account']['pass']['#description']);
+      break;
+  }
+  if ($form_id == 'profile_node_form') {
+    $form['field_profile_height_feet']['#suffix'] = t('feet');
+    $form['field_profile_height_inches']['#suffix'] = t('inches');
+  }
+  if ($form_id == 'metrocatch_profile_complete_form') {
+    $form['field_profile_height_feet']['#suffix'] = t('feet') . $form['field_profile_height_feet']['#suffix'];
+    $form['field_profile_height_inches']['#suffix'] = t('inches') . $form['field_profile_height_inches']['#suffix'];
+  }
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter().
+ */
+function metrocatch_profile_form_user_register_alter($form, $form_state) {
+  $form['#after_build'][] = 'metrocatch_profile_registration_form_after_build';
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter().
+ */
+function metrocatch_profile_form_content_field_edit_form_alter(&$form, $form_state) {
+  $values = variable_get('metrocatch_profile_private_fields', array());
+  $form['field']['metrocatch_profile_allow_private_field'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Allow user to make this field private.'),
+    '#default_value' => isset($values[$form['#field']['field_name']]) ? 1 : 0,
+  );
+  if (empty($form['#submit'])) {
+    $form['#submit'] = array();
+  }
+  array_unshift($form['#submit'], 'metrocatch_profile_form_content_field_edit_form_submit');
+}
+
+/**
+ * Implementation of hook_db_test().
+ */
+function metrocatch_profile_db_test() {
+  return array(
+    'metrocatch_profile_field_permissions.users_exist' => array(
+      'title' => t('Field permissions for non-existing users'),
+      'description' => t('Check if field permissions belong to nonexistent users.'),
+      'table' => 'metrocatch_profile_field_permissions',
+      'severity' => 'warning',
+      'test_query' => "SELECT COUNT(*) FROM {metrocatch_profile_field_permissions} m LEFT JOIN {users} u ON m.uid = u.uid WHERE u.uid IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT CONCAT(m.uid, '-', m.field_name) FROM {metrocatch_profile_field_permissions} m LEFT JOIN {users} u ON m.uid = u.uid WHERE u.uid IS NULL",
+      'error_list_description' => 'Uid-field_name pairs of records with missing users: @list',
+      'fixes' => array(
+        'metrocatch_profile_field_permissions_delete_records' => array(
+          'description' => t('Delete records with missing users.'),
+          'query' => "DELETE m FROM {metrocatch_profile_field_permissions} m LEFT JOIN {users} u ON m.uid = u.uid WHERE u.uid IS NULL",
+        ),
+      ),
+    ),
+    'metrocatch_profile_field_permissions.non_exsting_fields' => array(
+      'title' => t('Field permissions for non-existing fields'),
+      'description' => t('Check if field permissions belong to nonexistent fields.'),
+      'table' => 'metrocatch_profile_field_permissions',
+      'severity' => 'warning',
+      'test_query' => "SELECT COUNT(*) FROM {metrocatch_profile_field_permissions} m LEFT JOIN {content_node_field_instance} c ON c.field_name = m.field_name WHERE c.field_name IS NULL",
+      'test_type' => 'negative',
+      'error_list_query' => "SELECT m.field_name FROM {metrocatch_profile_field_permissions} m LEFT JOIN {content_node_field_instance} c ON c.field_name = m.field_name WHERE c.field_name IS NULL GROUP BY m.field_name",
+      'error_list_description' => 'Field names, that refers to non-existing fields: @list',
+      'fixes' => array(
+        'metrocatch_profile_field_permissions_delete' => array(
+          'description' => t('Delete records with non-existing fields.'),
+          'query' => "DELETE m FROM {metrocatch_profile_field_permissions} m LEFT JOIN {content_node_field_instance} c ON c.field_name = m.field_name WHERE c.field_name IS NULL",
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_order_pane_alter().
+ */
+function metrocatch_profile_order_pane_alter(&$panes) {
+  $customer_pane_key = NULL;
+  // Search Customer Info pane.
+  foreach ($panes as $index => $data) {
+    if ($data['id'] == 'customer') {
+      $customer_pane_key = $index;
+      break;
+    }
+  }
+  if (isset($customer_pane_key)) {
+    $panes[$customer_pane_key]['callback'] = 'metrocatch_profile_order_pane_customer';
+  }
+}
+
+/**
+ * Implementation of hook_content_allowed_values_alter().
+ */
+function metrocatch_profile_content_allowed_values_alter(&$values, $field) {
+  // For men remove 'curvy' option from body type select,
+  // for women remove 'hefty'.
+  if ($field['field_name'] == 'field_profile_body_type') {
+    global $user;
+    if (!$user->uid) {
+      return;
+    }
+    if (metrocatch_profile_get_user_sex($user->uid) == 'man') {
+      unset($values['curvy']);
+    }
+    else {
+      unset($values['hefty']);
+    }
+  }
+}
+
+/**
+ * @} End of "name hooks".
+ */
+
+/**
+ * @name api API implementations.
+ * @{
+ */
+
+/**
+ * Gets user profile node.
+ *
+ * @param $uid
+ *   The user UID.
+ * @param $lang
+ *   (Optional) If translation is enabled, the language of the profile to return.
+ * @param $reset
+ *   (Optional) Indicating whether to reset static cache. Default is FALSE.
+ * @return
+ *   A fully populated profile node object on success, FALSE otherwise.
+ */
+function metrocatch_profile_get_profile($uid, $lang = '', $reset = FALSE) {
+  return content_profile_load('profile', $uid, $lang, $reset);
+}
+
+/**
+ * Get user name for display on the site (substitution for real username)
+ *
+ * @param int $uid
+ *   user id
+ *
+ * @return string
+ *   substitution for username
+ */
+function metrocatch_profile_get_user_name($uid) {
+  // don't change anonymous username
+  if ($uid == 0) {
+    return variable_get('anonymous', 'Anonymous');
+  }
+  // return profile first name as username
+  // @TODO: should be $profile->field[0][value].
+  $value = db_result(
+    db_query(
+      "SELECT field_profile_first_name_value
+      FROM {node} n
+      INNER JOIN {content_type_profile} ctp ON n.vid=ctp.vid
+      WHERE uid=%d AND n.type='profile'",
+      $uid
+    )
+  );
+  if (!$value || $value == '') {
+    // return original username, if no first name found
+    return db_result(db_query("SELECT name FROM {users} WHERE uid=%d", $uid));
+  }
+
+  return $value;
+}
+
+/**
+ * Get user sex.
+ */
+function metrocatch_profile_get_user_sex($uid) {
+  $profile = metrocatch_profile_get_profile($uid);
+  return $profile->field_profile_sex[0]['value'];
+}
+
+/**
+ * Get user sex preference.
+ */
+function metrocatch_profile_get_user_preference($uid) {
+  $profile = metrocatch_profile_get_profile($uid);
+  return $profile->field_profile_sex_preference[0]['value'];
+}
+
+/**
+ * Generate dummy username by email.
+ *
+ * @param string $mail
+ *   user's e-mail
+ * @param int $uid
+ *  user id
+ *
+ * @return string
+ *   generated username
+ */
+function metrocatch_profile_generatename($mail, $uid = NULL) {
+  $names1 = explode('@', $mail);
+  $names2 = explode('+', $names1[0]);
+  if ($names1[1] == 'proxymail.facebook.com' && $names2[0] == 'apps') {
+    $dotElements = explode('.', $names2[1]);
+    $name3 = '_fb_' . $dotElements[1];
+  }
+  else {
+    $name3 = implode(' ', explode('.', $names2[0]));
+  }
+  if (isset($uid)) {
+    $query = db_query("SELECT count(*) FROM {users} WHERE uid <> %d AND LOWER(name) = LOWER('%s')", $uid, $name3);
+  }
+  else {
+    $query = db_query("SELECT count(*) FROM {users} WHERE LOWER(name) = LOWER('%s')", $name3);
+  }
+  if (db_result($query) > 0) {
+    $sql = "SELECT SUBSTRING_INDEX(name,'_',-1) FROM {users} WHERE name REGEXP '%s' ORDER BY CAST(SUBSTRING_INDEX(name,'_',-1) AS UNSIGNED) DESC";
+    $nameidx = db_result(db_query_range($sql, '^'. $name3 .'_[0-9]+$', 0, 1));
+    $name3 .= '_'. ($nameidx + 1);
+  }
+  return $name3;
+}
+
+/**
+ * @} End of "name api".
+ */
+
+/**
+ * @name helper Helper functions.
+ * @{
+ */
+
+/**
+ * Page callback: redirects user to a profile edit page.
+ *
+ * Path: 'profile/edit'
+ */
+function metrocatch_profile_edit_profile() {
+  global $user;
+  drupal_goto('user/'. $user->uid .'/edit/profile');
+}
+
+/**
+ * After build callback for the registration form
+ */
+function metrocatch_profile_registration_form_after_build($form) {
+  // replace "title" field from form
+  $form['title'] = array(
+    '#type' => 'value',
+    '#value' => 'Profile',
+  );
+  return $form;
+}
+
+/**
+ * Additional submit handler for the profile_node_form form.
+ *
+ * Notifies other modules about changes in user's profile.
+ */
+function metrocatch_profile_profile_changed($form, &$form_state) {
+  $account = user_load($form_state['values']['uid']);
+  $new_values = $form_state['values'];
+  $old_values = metrocatch_profile_get_profile($new_values['uid']);
+  $profile_fields = array(
+    'field_profile_first_name' => '',
+    'field_profile_last_name' => '',
+    'field_profile_birth_date' => '',
+    'field_profile_favorite_books' => 'Favorite books',
+    'field_profile_favorite_movies' => 'Favorite movies',
+    'field_profile_favorite_quotes' => '',
+    'field_profile_favorite_tv_shows' => 'Favorite TV shows',
+    'field_profile_high_scool' => '',
+    'field_profile_college' => 'College',
+    'field_profile_graduate_school' => '',
+    'field_profile_hometown' => 'Hometown',
+    'field_profile_state' => '',
+    'field_profile_current_city' => 'Current city',
+    'field_profile_neighborhood' => '',
+    'field_profile_employment' => '',
+  );
+  $changes = array();
+  foreach ($profile_fields as $field => $title) {
+    $old_value = $old_values->{$field}[0]['value'];
+    $new_value = $new_values[$field][0]['value'];
+    if ($new_value != $old_value) {
+      if (!$old_value) {
+        $op = 'added';
+      }
+      elseif (!$new_value) {
+        $op = 'removed';
+      }
+      else {
+        $op = 'updated';
+      }
+      $def = content_fields($field, 'profile');
+      if (!$title) {
+        $title = $def['widget']['label'];
+      }
+      $changes[$op][] = array(
+        'field' => $field,
+        'title' => $title,
+        'value' => $new_value,
+      );
+    }
+  }
+  if (!empty($changes)) {
+    module_invoke_all('metrocatch_profile_changed', $account, $old_values, $changes);
+  }
+}
+
+/**
+ * Additional submit handler for registration form.
+ * Generate dummy username from e-mail, before user will be created.
+ */
+function metrocatch_profile_registration_form_submit($form, &$form_state) {
+  $form_state['values']['name'] = metrocatch_profile_generatename($form_state['values']['mail']);
+}
+
+/**
+ * Custom submit handler for field settings form.
+ * Save per-field access settings.
+ */
+function metrocatch_profile_form_content_field_edit_form_submit($form, $form_state) {
+  $values = variable_get('metrocatch_profile_private_fields', array());
+  $field_name = $form['#field']['field_name'];
+  if (empty($form_state['values']['metrocatch_profile_allow_private_field'])) {
+    unset($values[$field_name]);
+  }
+  else {
+    $values[$field_name] = TRUE;
+  }
+  variable_set('metrocatch_profile_private_fields', $values);
+}
+
+/**
+ * Custom submit handler for node form.
+ * Save per-field access settings.
+ */
+function metrocatch_profile_node_form_submit($form, $form_state) {
+  $type = content_types($form['#node']->type);
+  if (!empty($type['fields'])) {
+    if (isset($form_state['values']['uid'])) {
+      $uid = $form_state['values']['uid'];
+    }
+    elseif (isset($form_state['user']->uid)) {
+      $uid = $form_state['user']->uid;
+    }
+    $access_settings = variable_get('metrocatch_profile_private_fields', array());
+    $user_private_fields = metrocatch_profile_get_user_private_fields($uid);
+    $dependent_fields = array(
+      'field_profile_current_city_make_private' => array('field_profile_neighborhood_make_private', 'field_profile_neighborhood_state_make_private'),
+      'field_profile_hometown_make_private' => array('field_profile_state_make_private'),
+      'field_profile_height_inches_make_private' => array('field_profile_height_feet_make_private'),
+    );
+    foreach ($dependent_fields as $dependency => $fields) {
+      foreach ($fields as $field) {
+        if (isset($form_state['values'][$dependency]) && isset($form_state['values'][$field])) {
+          $form_state['values'][$field] = $form_state['values'][$dependency];
+        }
+      }
+    }
+    foreach ($access_settings as $field_name => $true) {
+      if (isset($form[$field_name])) {
+        if ($form_state['values'][$field_name .'_make_private']) {
+          $user_private_fields[$field_name] = $form_state['values'][$field_name .'_make_private'];
+        }
+        else {
+          unset($user_private_fields[$field_name]);
+        }
+      }
+    }
+    metrocatch_profile_set_user_private_fields($uid, $user_private_fields);
+  }
+}
+
+/**
+ * Get array of user's private fields.
+ *
+ * @param $uid
+ *   The user UID whose fields we need to select.
+ *
+ * @return
+ *   An associative array containing field names in keys
+ *   and 0/1 indicating whether field is private in values.
+ */
+function metrocatch_profile_get_user_private_fields($uid) {
+  $fields = array();
+  $rows = db_query("SELECT field_name, access FROM {metrocatch_profile_field_permissions} WHERE uid = %d", $uid);
+  while ($row = db_fetch_object($rows)) {
+    $fields[$row->field_name] = $row->access;
+  }
+  return $fields;
+}
+
+/**
+ * Stores user's private fields in database.
+ *
+ * It also deletes previous records for this user, so only private fields
+ * are stored in {metrocatch_profile_field_permissions} table.
+ *
+ * @param $uid
+ *   The user UID.
+ * @param $user_private_fields
+ *   An associative array containing field names in keys 0/1 indicating in values
+ *   (1 means field is private).
+ */
+function metrocatch_profile_set_user_private_fields($uid, $user_private_fields) {
+  // delete old records
+  db_query("DELETE FROM {metrocatch_profile_field_permissions} WHERE uid = %d", $uid);
+  if (empty($user_private_fields)) {
+    return;
+  }
+  // insert new
+  $query = "INSERT INTO {metrocatch_profile_field_permissions} (uid, field_name, access) VALUES ";
+  $placeholders = array();
+  $args = array();
+  foreach ($user_private_fields as $field_name => $value) {
+    $placeholders[] = "(%d, '%s', %d)";
+    $args[] = $uid;
+    $args[] = $field_name;
+    $args[] = $value;
+  }
+  $query .= implode(',', $placeholders);
+  db_query($query, $args);
+}
+
+/**
+ * Check whether field is private or not.
+ *
+ * @param $uid
+ *   The user UID.
+ * @param $field_name
+ *   A field machine name.
+ *
+ * @return
+ *   TRUE if specified field is private or FALSE otherwise.
+ */
+function metrocatch_profile_field_is_private($uid, $field_name) {
+  static $cache;
+  // fill the cache
+  if (!isset($cache[$uid])) {
+    $rows = db_query("SELECT field_name, access FROM {metrocatch_profile_field_permissions} WHERE uid = %d", $uid);
+    $cache[$uid] = array();
+    while ($row = db_fetch_object($rows)) {
+      $cache[$uid][$row->field_name] = $row->access;
+    }
+  }
+  if (isset($cache[$uid][$field_name])) {
+    return $cache[$uid][$field_name];
+  }
+  return FALSE;
+}
+
+/**
+ * Get text of user sexual preference.
+ */
+function metrocatch_profile_get_preference_text($account) {
+  $profile = metrocatch_profile_get_profile($account->uid);
+  return ($profile->field_profile_sex_preference[0]['value'] == 'women' ? t('Interested in Women') : t('Interested in Men'));
+}
+
+/**
+ * Get an associatiove array with additional profile fields in keys and it's labels in values.
+ */
+function _metrocatch_connect_get_additional_fields() {
+  return array(
+    'field_profile_uniqueness' => t('What makes you a unique snowflake?'),
+    'field_profile_favorite_books' => t('Favorite Books'),
+    'field_profile_favorite_movies' => t('Favorite Movies'),
+    'field_profile_favorite_tv_shows' => t('Favorite TV Shows'),
+    'field_profile_favorite_quotes' => t('Favorite Quotations'),
+  );
+}
+
+/**
+ * Get an array of profile field placeholders.
+ */
+function _metrocatch_connect_get_base_fields() {
+  return array(
+    'field_profile_headline' => '',
+    'field_profile_height_feet' => '',
+    'field_profile_hair_color' => '',
+    'field_profile_eye_color' => '',
+    'field_profile_body_type' => '',
+    'field_profile_ethnicity' => '',
+    'field_profile_religion' => '',
+    'field_profile_motive' => '',
+  );
+
+//  return array(
+//    'field_profile_birth_date' => t('Born on'),
+//    'field_profile_high_scool' => t('Studied at'),
+//    'field_profile_college' => '',
+//    'field_profile_graduate_school' => '',
+//    'field_profile_hometown' => t('From'),
+//    'field_profile_current_city' => '',
+//    'field_profile_state' => '',
+//    'field_profile_neighborhood_state' => '',
+//    'field_profile_neighborhood' => '',
+//    'field_profile_employment' => t('Works at'),
+//  );
+}
+
+/**
+ * Prepares fields to display.
+ *
+ * @param $fields
+ *   An array of fields to display.
+ * @param $profile
+ *   StdClass object of user's profile.
+ *
+ * @return
+ *   An associative array with field names in keys and it's output in values.
+ */
+function metrocatch_profile_display_fields($fields, $profile) {
+  global $user;
+  if ($user->uid != $profile->uid) { // Reduce field set only to public.
+    $user_private_fields = metrocatch_profile_get_user_private_fields($profile->uid);
+    foreach ($user_private_fields as $field => $privacy) {
+      // If field is private (1) OR is public only to connections (2) but users are not connected, remove field.
+      if (intval($privacy) == 1 || (intval($privacy) == 2 && !metrocatch_connect_users_are_connected($user->uid, $profile->uid))) {
+        unset($fields[$field]);
+      }
+    }
+  }
+  $ret = array();
+  foreach ($fields as $field => $label) {
+    $def = content_fields($field, 'profile');
+    if (!empty($profile->{$field}[0]['value'])) {
+      $ret[$field] = array(
+        'label' => $label,
+        'output' => $profile->{$field}[0]['value'],
+      );
+      if ($def['widget']['type'] == 'optionwidgets_select') {
+        $options = optionwidgets_options($def);
+        $ret[$field]['output'] = $options[$ret[$field]['output']];
+      }
+      elseif ($def['type'] == 'datestamp') {
+        $ret[$field]['output'] = format_date($ret[$field]['output'], 'custom', variable_get('date_format_'. $def['display_settings']['full']['format'], 'm/d/Y'));
+      }
+      $ret[$field]['output'] = check_plain($ret[$field]['output']);
+    }
+  }
+  return $ret;
+}
+
+/**
+ * Get names of fields that users can't change.
+ */
+function _metrocatch_profile_get_permanent_fields() {
+  return array('field_profile_sex', 'field_profile_sex_preference');
+}
+
+/**
+ * Count user photos.
+ */
+function metrocatch_profile_count_photos($uid) {
+  return 1;
+}
+
+/**
+ * UC "Customer Info" pane callback.
+ */
+function metrocatch_profile_order_pane_customer($op, $arg1) {
+  // Handle only 'view' $op.
+  if ($op != 'view') {
+    return uc_order_pane_customer($op, $arg1);
+  }
+  // Next code copied from uc_order_pane_customer().
+  $output = t('Customer number: !user_link', array('!user_link' => $arg1->uid ? l($arg1->uid, 'user/'. $arg1->uid) : '0'))
+    .'<br />'. t('Primary e-mail:') .'<br />'
+    . check_plain($arg1->primary_email);
+  // Our small customization.
+  if ($profile = metrocatch_profile_get_profile($arg1->uid)) {
+    $output .= '</br>'. t('First Name: @fname', array('@fname' => $profile->field_profile_first_name[0]['value']))
+      .'</br>'. t('Last Name: @lname', array('@lname' => $profile->field_profile_last_name[0]['value']))
+      .'</br>'. t('Username: @uname', array('@uname' => $profile->name));
+  }
+  return $output;
+}
+
+/**
+ * Additional validation handler for the 'user_profile_form' form.
+ *
+ * Validates the user's profile node.
+ */
+function metrocatch_profile_user_profile_form_validate($form, &$form_state) {
+  $v = $form_state['values'];
+  $account = $form['#account'];
+  if ($error = user_validate_mail($v['mail'])) {
+    form_set_error('mail', $error);
+  }
+  elseif (db_result(db_query("SELECT COUNT(*) FROM {users} WHERE uid <> %d AND LOWER(mail) = LOWER('%s')", $account->uid, $v['mail'])) > 0) {
+    form_set_error('mail', t('The e-mail address %email is already registered. <a href="@password">Have you forgotten your password?</a>', array('%email' => $edit['mail'], '@password' => url('user/password'))));
+  }
+  elseif (drupal_is_denied('mail', $v['mail'])) {
+    form_set_error('mail', t('The e-mail address %email has been denied access.', array('%email' => $edit['mail'])));
+  }
+}
+
+/**
+ * Additional validation handler for the registration and profile edition forms.
+ *
+ * Validates picture upload.
+ */
+function metrocatch_profile_user_picture_validate($form, &$form_state) {
+  // If required, validate the uploaded picture.
+  $validators = array(
+    'file_validate_is_image' => array(),
+    'file_validate_image_resolution' => array(variable_get('user_picture_dimensions', '85x85')),
+    'file_validate_size' => array(variable_get('user_picture_file_size', '30') * 1024),
+  );
+  if ($file = file_save_upload('picture_upload', $validators)) {
+    // Remove the old picture (only for profile edition form).
+    if (isset($form['#account']) && isset($form['#account']->picture) && file_exists($form['#account']->picture)) {
+      file_delete($form['#account']->picture);
+    }
+    $form_state['#picture'] = $file;
+  }
+}
+
+/**
+ * Element validation callback for Birthday field.
+ *
+ * Is used on 'user_register' and 'profile_node_form' forms.
+ * Checks if user has reached the age of 18.
+ */
+function metrocatch_profile_validate_age($element, &$form_state) {
+  $parts = $element['#value']['value'];
+  if (empty($parts['year']) || empty($parts['month']) || empty($parts['day'])) {
+    // User has not selected all 3 parts, he will get another error message.
+    return form_error($element, '');
+  }
+  $now = time();
+  $current_year = date('Y', $now);
+  $current_month = date('n', $now);
+  $current_day = date('j', $now);
+  $underage = FALSE;
+  if ($current_year - $parts['year'] < 17) {
+    $underage = TRUE;
+  }
+  elseif ($current_year - $parts['year'] == 17) {
+    if ($current_month < $parts['month']) {
+      $underage = TRUE;
+    }
+    elseif ($current_month == $parts['month']) {
+      if ($current_day < $parts['day']) {
+        $underage = TRUE;
+      }
+      elseif ($current_day == $parts['day']) {
+        // Happy birthday, %username%!
+      }
+    }
+  }
+  if ($underage) {
+    form_error($element, t('You must be over the age of 18 to create an account on metrocatch.'));
+  }
+}
+
+/**
+ * Additional submission handler for the registration and profile edition forms.
+ *
+ * Handles picture upload.
+ */
+function metrocatch_profile_user_picture_submit($form, &$form_state) {
+  // Profile edition form stores account object in inseft
+  // but registration form stores it in form_state array.
+  $account = (isset($form['#account']) ? $form['#account'] : $form_state['user']);
+  if ($file = $form_state['#picture']) {
+    // The image was saved using file_save_upload() and was added to the
+    // files table as a temporary file. We'll make a copy and let the garbage
+    // collector delete the original upload.
+    $info = image_get_info($file->filepath);
+    $destination = variable_get('user_picture_path', 'pictures') .'/picture-'. $account->uid .'.'. $info['extension'];
+    if (file_copy($file, $destination, FILE_EXISTS_REPLACE)) {
+      $form_state['values']['picture'] = $file->filepath;
+    }
+    else {
+      drupal_set_message(t('Failed to upload the picture image; please try again later.'), 'error');
+    }
+  }
+}
+
+/**
+ * Additional submission handler for the registration form.
+ *
+ * Save user picture in database.
+ *
+ * Due to the fact that on this step user has already been saved in database
+ * (without picture), we have to update it.
+ */
+function metrocatch_profile_user_picture_save($form, &$form_state) {
+  $account = $form_state['user'];
+  if (!empty($form_state['values']['picture'])) {
+    $edit = array(
+      'picture' => $form_state['values']['picture'],
+    );
+    user_save($account, $edit);
+  }
+}
+
+/**
+ * Additional submission handler for the 'user_register' form.
+ *
+ * Redirects user to second step.
+ */
+function metrocatch_profile_redirect_to_second_step($form, &$form_state) {
+  if (reset($form_state['clicked_button']['#parents']) == 'save_and_proceed') {
+    $account = $form_state['user'];
+    $form_state['redirect'] = 'user/register/'. $account->uid .'/profile/'. drupal_get_token($account->uid);
+  }
+  else {
+    $form_state['redirect'] = 'profile';
+  }
+}
+
+/**
+ * Additional submission handler for the 'user_profile_form' form.
+ *
+ * Saves the user's profile node.
+ */
+function metrocatch_profile_user_profile_form_submit($form, &$form_state) {
+  $edit = array(
+    'mail' => $form_state['values']['mail'],
+    'pass' => $form_state['values']['pass'],
+    'signature' => (isset($form_state['values']['signature']) ? $form_state['values']['signature'] : NULL),
+    'signature_format' => (isset($form_state['values']['signature_format']) ? $form_state['values']['signature_format'] : NULL),
+    'picture_delete' => (isset($form_state['values']['picture_delete']) ? $form_state['values']['picture_delete'] : NULL),
+    'picture' => (!empty($form_state['values']['picture']) ? $form_state['values']['picture'] : $form['#account']->picture),
+  );
+  user_module_invoke('submit', $edit, $form['#account'], 'account');
+  user_save($form['#account'], $edit, 'account');
+  // Clear the page cache because pages can contain usernames and/or profile information:
+  cache_clear_all();
+}
+
+/**
+ * Process callback for a Birthday profile field.
+ *
+ * Fix bug with element validation.
+ */
+function metrocatch_profile_birthday_process($element, $edit, $form_state, $form) {
+  $element['value']['#process'] = array('date_select_process', 'metrocatch_profile_birthday_select_process');
+  return $element;
+}
+
+/**
+ * Element process callback for the 'Birthday' form element.
+ *
+ * Removes '#required' flag from element children in order not to display
+ * multiple errors if any of them are not specified.
+ */
+function metrocatch_profile_birthday_select_process($element, $edit, $form_state, $form) {
+  foreach ($element['#granularity'] as $child) {
+    unset($element[$child]['#required']);
+  }
+  return $element;
+}
+
+/**
+ * Element validation callback for the 'Agree terms of service' checkbox.
+ */
+function metrocatch_profile_agree_terms_validate($element, &$form_state) {
+  if (empty($element['#value'])) {
+    form_error($element, t('You must agree to metrocatch\'s <a href="/terms-of-service">Terms of Service.</a>'));
+  }
+}
+
+/**
+ * Get the list of fields displayed on the 2nd page of the registration form.
+ */
+function metrocatch_profile_second_step_fields() {
+  return array(
+    'field_profile_headline',
+    'field_profile_height_feet',
+    'field_profile_height_inches',
+    'field_profile_hair_color',
+    'field_profile_eye_color',
+    'field_profile_body_type',
+    'field_profile_ethnicity',
+    'field_profile_religion',
+    'field_profile_motive',
+    'field_profile_smoke',
+    'field_profile_education',
+
+    'field_profile_hometown',
+    'field_profile_state',
+    'field_profile_current_city',
+    'field_profile_neighborhood_state',
+    'field_profile_neighborhood',
+    'field_profile_favorite_books',
+    'field_profile_favorite_movies',
+    'field_profile_favorite_quotes',
+    'field_profile_uniqueness',
+  );
+}
+
+/**
+ * Form construction handler for the 'Complete registration' form.
+ *
+ * Path: user/register/%/profile
+ */
+function metrocatch_profile_complete_form(&$form_state, $uid) {
+  module_load_include('inc', 'content', 'includes/content.node_form');
+  $profile = metrocatch_profile_get_profile($uid);
+  $form = array('#node' => $profile);
+  $private_fields = variable_get('metrocatch_profile_private_fields', array());
+  $weight = 0;
+  foreach (metrocatch_profile_second_step_fields() as $field_name) {
+    $field = content_fields($field_name, $profile->type);
+    $form['#field_info'][$field['field_name']] = $field;
+    $addition = content_field_form($form, $form_state, $field);
+    if (array_key_exists($field_name, $private_fields)) {
+      $addition[$field_name]['#prefix'] = '<div class="field-privacy-wrapper field-privacy-'. $field_name .'-wrapper"><div class="field-privacy-field">';
+      $addition[$field_name]['#suffix'] = '</div>';
+      $addition[$field_name .'_make_private'] = array(
+        '#prefix' => '<div class="field-privacy field-privacy-'. $field_name .'">',
+        '#suffix' => '</div></div>',
+        '#type' => 'checkbox',
+        '#title' => t('Make Private'),
+        '#default_value' => (empty($uid) ? '0' : metrocatch_profile_field_is_private($uid, $field_name)),
+        '#weight' => $addition[$field_name]['#weight'] + 0.001,
+        '#attributes' => array('class' => 'field-privacy'),
+      );
+    }
+    $form += $addition;
+    foreach (element_children($addition) as $element) {
+      $weight = max($weight, $addition[$element]['#weight']);
+    }
+  }
+  $form['buttons'] = array(
+    '#weight' => ++$weight,
+    'submit' => array(
+      '#type' => 'submit',
+      '#value' => t('Save profile'),
+    ),
+  );
+  $form['#after_build'][] = 'metrocatch_profile_complete_form_after_build';
+  return $form;
+}
+
+/**
+ * After build handler for the 'Complete registration' form.
+ */
+function metrocatch_profile_complete_form_after_build($form) {
+  drupal_add_css(drupal_get_path('module', 'metrocatch_profile') .'/metrocatch_profile.css');
+  unset($form['field_profile_state_make_private'], $form['field_profile_state']['#prefix'], $form['field_profile_state']['#suffix']);
+  $form['field_profile_hometown']['state'] = $form['field_profile_state'];
+  unset($form['field_profile_state']);
+  unset($form['field_profile_neighborhood_make_private'], $form['field_profile_neighborhood_state']['#prefix'], $form['field_profile_neighborhood_state']['#suffix']);
+  unset($form['field_profile_neighborhood']['#prefix'], $form['field_profile_neighborhood']['#suffix']);
+  $form['field_profile_current_city']['state'] = $form['field_profile_neighborhood_state'];
+  $form['field_profile_current_city']['neighborhood'] = $form['field_profile_neighborhood'];
+  unset($form['field_profile_neighborhood_state'], $form['field_profile_neighborhood']);
+  return $form;
+}
+
+/**
+ * Form submission handler for the 'Complete registration' form.
+ */
+function metrocatch_profile_complete_form_submit($form, &$form_state) {
+  $node = $form['#node'];
+  $privacy = array();
+  $values = $form_state['values'];
+  foreach (array_keys(variable_get('metrocatch_profile_private_fields', array())) as $private_field) {
+    if (isset($values[$private_field .'_make_private'])) {
+      $privacy[$private_field] = $values[$private_field .'_make_private'];
+      unset($values[$private_field .'_make_private']);
+    }
+  }
+  metrocatch_profile_set_user_private_fields($node->uid, $privacy);
+  foreach (node_submit($values) as $key => $field) {
+    if ($key == 'uid') {
+      continue;
+    }
+    $form['#node']->$key = $field;
+  }
+  node_save($node);
+  drupal_set_message(t('Profile saved.'));
+  $form_state['redirect'] = 'profile';
+}
+
+/**
+ * @} End of "name helper".
+ */
+
+/**
+ * @name theme Theme implementations.
+ * @{
+ */
+
+/**
+ * Preprocess function for 'metrocatch_profile_moreinfo'.
+ */
+function template_preprocess_metrocatch_profile_moreinfo(&$vars) {
+  $uid = $vars['user_id'];
+  $fields = _metrocatch_connect_get_additional_fields();
+  $profile = metrocatch_profile_get_profile($uid);
+  $vars['fields'] = metrocatch_profile_display_fields($fields, $profile);
+}
+
+/**
+ * Preprocess variables for the metrocatch profile picture template.
+ */
+function template_preprocess_metrocatch_profile_picture(&$vars) {
+  $presetname = $vars['presetname'];
+  $vars['picture'] = '';
+  if (variable_get('user_pictures', 0)) {
+    $account = $vars['account'];
+    $picture = '';
+    if (!empty($account->picture)) {
+      $alt = t('@user\'s picture', array('@user' => $account->name ? $account->name : variable_get('anonymous', t('Anonymous'))));
+      $picture .= theme('imagecache', $presetname, $account->picture, $alt, $alt, '', FALSE);
+    }
+    $default_picture = imagecache_create_path($presetname, variable_get('user_picture_default', ''));
+    $info = image_get_info($default_picture);
+    $default_picture = url($default_picture, array('absolute' => TRUE));
+    $attributes = array(
+      'class' => 'metrocatch-profile-default-picture',
+      'style' => "background-image: url({$default_picture}); width:{$info['width']}px;height:{$info['height']}px;",
+    );
+    $vars['picture'] = '<div '. drupal_attributes($attributes) .'>'. $picture .'</div>';
+    if (!empty($vars['canvas'])) {
+      $vars['picture'] = '<div class="userpic-canvas-'. $vars['canvas'] .'"></div>'. $vars['picture'];
+    }
+  }
+}
+
+/**
+ * Preprocess function for 'metrocatch_connect_profile_full'.
+ */
+function metrocatch_profile_preprocess_metrocatch_connect_profile_full(&$vars) {
+  $vars['metrocatch_moreinfo'] = theme('metrocatch_profile_full_moreinfo', $vars['account']);
+}
+
+/**
+ * Return HTML output of a user's base public profile fields.
+ *
+ * @param $uid
+ *   The UID of the user whose profile fields to display.
+ */
+function theme_metrocatch_profile_baseinfo($uid) {
+  $fields = _metrocatch_connect_get_base_fields();
+  $profile = metrocatch_profile_get_profile($uid);
+  $output = array();
+  $lives_in = array();
+  $fields_to_render = metrocatch_profile_display_fields($fields, $profile);
+  $studied_at = array();
+  $headline = NULL;
+  foreach ($fields_to_render as $field => $display_field) {
+    $value = (empty($display_field['label']) ? $display_field['output'] : $display_field['label'] .' '. $display_field['output']);
+    if (empty($value)) {
+      continue;
+    }
+    switch ($field) {
+      case 'field_profile_current_city':
+        $lives_in[$field] = $value;
+        break;
+      case 'field_profile_neighborhood_state':
+        $value = (!empty($lives_in['field_profile_current_city']) ? ', '. $value : ''. $value);
+        $lives_in[$field] = $value;
+        break;
+      case 'field_profile_neighborhood':
+        if (!empty($lives_in['field_profile_state'])) {
+          $value = ' - '. $value;
+        }
+        else {
+          $value = ', '. $value;
+        }
+        $lives_in[$field] = $value;
+        break;
+      case 'field_profile_hometown':
+        if (!empty($fields_to_render['field_profile_state']['output'])) {
+          $output[$field] = t('From !city, !state', array('!city' => $display_field['output'], '!state' => $fields_to_render['field_profile_state']['output']));
+        }
+        else {
+          $output[$field] = t('From !city', array('!city' => $display_field['output']));
+        }
+        break;
+      case 'field_profile_employment':
+        if (!empty($lives_in)) {
+          $output['_lives_in_'] = t('Lives in !lives_in', array('!lives_in' => implode('', $lives_in)));
+        }
+        $output[$field] = $value;
+        break;
+      case 'field_profile_state':
+        break;
+      case 'field_profile_college':
+      case 'field_profile_graduate_school':
+      case 'field_profile_high_scool':
+        $output['studied_at'] = '';
+        $studied_at[] = $value;
+        break;
+      case 'field_profile_headline':
+        $headline = '"<b>'. $value .'</b>"';
+        break;
+      case 'field_profile_height_feet':
+        $inches = isset($profile->field_profile_height_inches[0]['value']) ? $profile->field_profile_height_inches[0]['value'] : 0;
+        $output['height'] = t('@tall Tall', array('@tall' => $value  .'’'. $inches .'”'));
+        break;
+      case 'field_profile_hair_color':
+        $color = $profile->field_profile_hair_color[0]['value'] == 'what_hair' ? t('No Hair') : t('@color Hair', array('@color' => $value));
+        $output['hair_color'] = $color;
+        break;
+      case 'field_profile_eye_color':
+        $output['eye_color'] = t('@color Eyes', array('@color' => $value));
+        break;
+      case 'field_profile_body_type':
+        $output['body_type'] = t('Body Type: @type', array('@type' => $value));
+        break;
+      case 'field_profile_motive':
+        $output['motive'] = t('I’m looking for @motive', array('@motive' => $value));
+        break;
+      default:
+        $output[$field] = $value;
+    }
+  }
+  // If employment field is empty, add lives_in field to the end of string.
+  if (!isset($output['_lives_in_']) && !empty($lives_in)) {
+    $output['_lives_in_'] = t('Lives in !lives_in', array('!lives_in' => implode('', $lives_in)));
+  }
+  if (!empty($studied_at)) {
+    $output['studied_at'] = t('Studied at !places', array('!places' => implode(', ', $studied_at)));
+  }
+  return (isset($headline) ? $headline .'<br/>' : '') . implode(' | ', $output);
+}
+
+/**
+ * Preprocess variables for the user profile edition form.
+ */
+function template_preprocess_metrocatch_profile_account_form(&$vars) {
+  drupal_add_css(drupal_get_path('module', 'metrocatch_profile') .'/metrocatch_profile.css');
+  $form = $vars['form'];
+  foreach (element_children($form) as $child) {
+    if ($child == 'account') {
+      foreach (element_children($form[$child]) as $account_field) {
+        $vars[$account_field] = drupal_render($form[$child][$account_field]);
+      }
+      drupal_render($form[$child]);
+    }
+    else {
+      $vars[$child] = drupal_render($form[$child]);
+    }
+  }
+  $vars['is_admin'] = user_access('administer users');
+  //$vars['help_message'] = t('Any information provided below will be featured on your profile page. Please click “Make Private” if you would not like that information in your site feature if you choose to purchase one.');
+}
+
+/**
+ * Preprocess variables for the registration form.
+ */
+function template_preprocess_metrocatch_profile_registration_form(&$vars) {
+  $form = $vars['form'];
+  // Change text of the submit button.
+  // Do not change it on admin form because user_admin() expects original op.
+  if ($_GET['q'] != 'admin/user/user/create') {
+    $form['submit']['#value'] = t('Save profile');
+  }
+  // Provide a variable for all 1-st level elements.
+  foreach (element_children($form) as $child) {
+    $vars[$child] = drupal_render($form[$child]);
+  }
+  $vars['is_admin'] = user_access('administer users');
+  //$vars['help_message'] = t('Any information provided below will be featured on your profile page. Please click “Make Private” if you would not like that information in your site feature if you choose to purchase one.');
+}
+
+/**
+ * Theme handler for 'metrocatch_profile_full_moreinfo'.
+ */
+function theme_metrocatch_profile_full_moreinfo($account) {
+  $profile = metrocatch_profile_get_profile($account->uid);
+  $title = t('More About @name', array('@name' => $profile->field_profile_first_name[0]['value']));;
+  // Build body here.
+  $fields = array(
+    'field_profile_birth_date' => t('Born on'),
+    'field_profile_smoke' => '',
+    'field_profile_education' => '',
+    'field_profile_hometown' => t('From'),
+    'field_profile_current_city' => '',
+    'field_profile_state' => '',
+    'field_profile_neighborhood_state' => '',
+    'field_profile_neighborhood' => '',
+  );
+
+  $output = array();
+  $lives_in = array();
+  $fields_to_render = metrocatch_profile_display_fields($fields, $profile);;
+
+  foreach ($fields_to_render as $field => $display_field) {
+    $value = (empty($display_field['label']) ? $display_field['output'] : $display_field['label'] .' '. $display_field['output']);
+    if (empty($value)) {
+      continue;
+    }
+    switch ($field) {
+      case 'field_profile_education':
+        $output[$field] = t('Highest level of Education: @level', array('@level' => $value));
+        break;
+      case 'field_profile_current_city':
+        $lives_in[$field] = $value;
+        break;
+      case 'field_profile_neighborhood_state':
+        $value = (!empty($lives_in['field_profile_current_city']) ? ', '. $value : ''. $value);
+        $lives_in[$field] = $value;
+        break;
+      case 'field_profile_neighborhood':
+        if (!empty($lives_in['field_profile_state'])) {
+          $value = ' - '. $value;
+        }
+        else {
+          $value = ', '. $value;
+        }
+        $lives_in[$field] = $value;
+        break;
+      case 'field_profile_hometown':
+        if (!empty($fields_to_render['field_profile_state']['output'])) {
+          $output[$field] = t('From !city, !state', array('!city' => $display_field['output'], '!state' => $fields_to_render['field_profile_state']['output']));
+        }
+        else {
+          $output[$field] = t('From !city', array('!city' => $display_field['output']));
+        }
+        break;
+      case 'field_profile_state':
+        break;
+      default:
+        $output[$field] = $value;
+    }
+  }
+  if (!isset($output['_lives_in_']) && !empty($lives_in)) {
+    $output['_lives_in_'] = t('Lives in !lives_in', array('!lives_in' => implode('', $lives_in)));
+  }
+  $body = implode(' | ', $output);
+  return '<div class="profile-moreinfo-field-label group-title">'. $title .'</div><div class="profile-moreinfo-field-value-trimmed">'. $body .'</div>';
+}
+
+/**
+ * @} End of "name theme".
+ */

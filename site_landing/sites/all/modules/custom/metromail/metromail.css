@@ -1,0 +1,84 @@
+@CHARSET "UTF-8";
+
+.metromail-message-container {
+	padding: 5px;
+}
+
+.metromail-message-userpic {
+	float: left;
+	padding: 5px 20px 5px 0;
+}
+
+.metromail-message-username {
+	float: left;
+	font-size: 1.2em;
+}
+
+.metromail-message-date {
+	float: right;
+	font-size: 0.9em;
+}
+
+.metromail-message-header {
+	cleat: right;
+}
+
+.metromail-message-body {
+	clear: right;
+	padding-top: 1px;
+}
+
+.metromail-message-body p {
+	margin: 0.5em 0;
+}
+
+.metromail-message  {
+	border-top: 1px solid #000;
+  padding: 10px 0 10px;
+}
+
+.metromail-message .children {
+	margin-left: 20px;
+}
+
+
+.emailme-flag-wrapper {
+	display: block;
+	float: right;
+	margin-top: -40px;
+	padding-top: 10px;
+}
+
+.emailme-flag-wrapper a {
+	text-decoration: none;
+	color: #000;
+}
+
+.metromail-messages-wrapper {
+	margin-top: 40px;
+}
+
+.metromail-message-actions {
+	float: right;
+}
+
+.metromail-message-actions a {
+	padding: 5px;
+}
+
+.metromail-message .children .ahah-progress {
+	float: right;
+	margin: -21px -10px 0 0;
+}
+
+.metromail-message .children .ahah-progress .throbber {
+	float: right;
+}
+
+.metromail-message.self {
+	
+}
+
+.metromail-more-wrapper {
+	border-top: 1px solid #000;
+}

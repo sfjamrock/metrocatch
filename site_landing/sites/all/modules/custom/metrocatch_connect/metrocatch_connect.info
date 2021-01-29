@@ -1,0 +1,10 @@
+name = MetroCatch Connect
+description = MetroCatch connect module, provides catch logic, emails, pages and blocks.
+version = 6.x-1.0
+core = 6.x
+package = MetroCatch
+dependencies[] = date_api
+dependencies[] = metrocatch_uc
+dependencies[] = metrocatch_profile
+dependencies[] = jquery_ui
+dependencies[] = jquery_update

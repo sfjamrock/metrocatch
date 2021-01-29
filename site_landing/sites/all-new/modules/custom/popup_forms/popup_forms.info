@@ -1,0 +1,7 @@
+; $Id$
+name = Popup Forms
+description = API to show forms in jQuery Popups
+package = custom
+core = "6.x"
+dependencies[] = jquery_ui
+dependencies[] = jquery_update

@@ -1,0 +1,11 @@
+; $Id: vr_register.info,v 1.1.2.2 2010/01/12 21:22:10 jbomb Exp $
+name = VerticalResponse User Registration
+description = Allow users to subscribe to mailing lists during the registration process.
+core = 6.x
+dependencies[] = vr
+; Information added by drupal.org packaging script on 2010-07-23
+version = "6.x-1.1"
+core = "6.x"
+project = "vr"
+datestamp = "1279893922"
+

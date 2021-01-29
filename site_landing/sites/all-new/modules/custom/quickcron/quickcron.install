@@ -1,0 +1,16 @@
+<?php
+
+/**
+ * @file
+ * Quickcron install file.
+ */
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function quickcron_uninstall() {
+  variable_del('quickcron_log');
+  variable_del('quickcron_period');
+  variable_del('quickcron_log');
+  quickcron_reset();
+}

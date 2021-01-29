@@ -1,0 +1,439 @@
+<?php
+
+/**
+ * @name hooks Hook implementations.
+ * @{
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function db_consistency_menu() {
+  return array(
+    'admin/reports/db-consistency' => array(
+      'title' => 'Database consistency tests',
+      'description' => 'Tests to check your database.',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('db_consistency_test_form'),
+      'access arguments' => array('test db consistency'),
+      'type' => MENU_NORMAL_ITEM,
+      'file' => 'db_consistency.admin.inc',
+    ),
+    'admin/reports/db-consistency/all' => array(
+      'title' => 'All',
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'weight' => -10,
+    ),      
+    'admin/reports/db-consistency/failed' => array(
+      'title' => 'Failed',
+      'page callback' => 'db_consistency_failed_tests',
+      'access arguments' => array('test db consistency'),
+      'type' => MENU_LOCAL_TASK,
+      'file' => 'db_consistency.admin.inc',
+    ),
+    'admin/reports/db-consistency/ahah-retest-test' => array(
+      'page callback' => 'db_consistency_ahah_retest_test',
+      'type' => MENU_CALLBACK,
+      'access arguments' => array('test db consistency'),
+      'file' => 'db_consistency.admin.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_init().
+ */
+function db_consistency_init() {
+  drupal_add_css(drupal_get_path('module', 'db_consistency') . '/db_consistency.css');
+  drupal_add_js(drupal_get_path('module', 'db_consistency') . '/db_consistency.js');
+}
+
+/**
+ * Implementation of hook_cron().
+ */
+function db_consistency_cron() {
+  db_consistency_actualize_test_result();
+  $test_result = db_consistency_get_result();
+  $test_name = key($test_result);
+  $test_date = array_shift($test_result);
+  $test_date = $test_date['time'];
+  foreach ($test_result as $test_result_name => $test_result_info) {
+    if ($test_date > $test_result_info['time']) {
+      $test_name = $test_result_name;
+      $test_date = $test_result_info['time'];
+    };
+  }
+  $test_info = db_consistency_get_test_info();
+  $result_test = db_consistency_run_test($test_info[$test_name]);
+  db_consistency_save_test_result($test_name, $result_test);
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function db_consistency_perm() {
+  return array('test db consistency');
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function db_consistency_theme() {
+  return array(
+    'db_consistency_test_element' => array(
+      'function' => 'db_consistency_test_element',
+      'arguments' => array('form' => NULL),
+    ),
+    'db_consistency_test' => array(
+      'path' => drupal_get_path('module', 'db_consistency') . '/templates/',
+      'arguments' => array(
+        'info' => array(),
+        'result' => array(),
+        'test_check' => array(),
+        'test_button' => array(),
+        'test_fixes' => NULL,
+      ),
+      'template' => 'db-consistency-test',
+    ),
+    'db_consistency_test_element_fix' => array(
+      'function' => 'db_consistency_test_element_fix',
+      'arguments' => array('form' => NULL),
+    ),
+    'db_consistency_test_fix' => array(
+      'path' => drupal_get_path('module', 'db_consistency') . '/templates/',
+      'arguments' => array(
+        'fix_info' => array(),
+        'apply_fix_button' => array(),
+      ),
+      'template' => 'db-consistency-test-fix',
+    ),
+    'db_consistency_test_form' => array(
+      'arguments' => array('form' => array()),
+      'file' => 'db_consistency.admin.inc',
+    ),
+    'db_consistency_failed_tests' => array(
+      'arguments' => array('form' => NULL, 'module' => NULL),
+      'template' => 'db-consistency-failed-tests',
+      'path' => drupal_get_path('module', 'db_consistency') . '/templates/',
+    )
+  );
+}
+
+/**
+ * Implementation of hook_requirements().
+ */
+function db_consistency_requirements($phase) {
+  if ($phase != 'runtime') {
+    return;
+  };
+  $report_info = db_consistency_get_errors_test();
+
+  $report_array = array();
+  if (!empty($report_info['error'])) {
+    $report_array[] = format_plural($report_info['error'], '1 error', '@count errors');
+  }
+  if (!empty($report_info['warning'])) {
+    $report_array[] = format_plural($report_info['warning'], '1 warning', '@count warnings');
+  }
+  if (!empty($report_info['not_check'])) {
+    $report_array[] = format_plural($report_info['not_check'], '1 not checked', '@count not checked');
+  }
+  if ($report_info['severity'] == REQUIREMENT_OK) {
+    $report_array[] = t('No errors');
+  }
+  $report_value = implode(', ', $report_array) .'.';
+
+  $last_check_time = db_consistency_get_time_last_check_test();
+  if ($last_check_time == 'never') {
+    $report_description = t('Never checked.');
+  }
+  else {
+    $report_description = t('Last check !time ago.', array('!time' => $last_check_time));
+  }
+  if (user_access('test db consistency')) {
+    $report_description .= t(' You can see all tests <a href="!db">here</a>.', array('!db' => url('admin/reports/db-consistency')));
+  };
+  return array(
+    'db_consistency' => array(
+      'title' => t('Database consistency'),
+      'value' => $report_value,
+      'severity' => $report_info['severity'],
+      'description' => $report_description,
+    ),
+  );
+}
+
+/**
+ * @} End of "name hooks".
+ */
+
+/**
+ * @name api API implementations.
+ * @{
+ */
+
+/**
+ * Count all tests by categories: error, warning, not_check
+ */
+function db_consistency_get_errors_test() {
+  $result_info = db_consistency_get_result();
+  $test_info = db_consistency_get_test_info();
+  $report_info = array(
+    'not_check' => 0,
+    'error' => 0,
+    'warning' => 0,
+    'severity' => '',
+  );
+  foreach ($result_info as $test_name => $test_result) {
+    if (!is_bool($test_result['result_passed'])) {
+      $report_info['not_check']++;
+    }
+    elseif (!$test_result['result_passed'] && $test_info[$test_name]['severity'] == 'error') {
+      $report_info['error']++;
+    }
+    elseif (!$test_result['result_passed'] && $test_info[$test_name]['severity'] == 'warning') {
+      $report_info['warning']++;
+    };
+  };
+  if ($report_info['error']) {
+    $report_info['severity'] = REQUIREMENT_ERROR;
+  }
+  elseif ($report_info['warning']) {
+    $report_info['severity'] = REQUIREMENT_WARNING;
+  }
+  elseif ($report_info['not_check']) {
+    $report_info['severity'] = REQUIREMENT_WARNING;
+  }
+  else {
+    $report_info['severity'] = REQUIREMENT_OK;
+  }
+  return $report_info;
+}
+
+/**
+ * Get time of last checked test.
+ */
+function db_consistency_get_time_last_check_test() {
+  db_consistency_actualize_test_result();
+  $result_info = db_consistency_get_result();
+  $test_date = array_shift($result_info);
+  $test_date = $test_date['time'];
+  foreach ($result_info as $test_result) {
+    if ($test_date <= $test_result['time']) {
+      $test_date = $test_result['time'];
+    };
+  };
+  if ($test_date != '') {
+    $test_date = format_interval(time() - $test_date);
+  }
+  else {
+    $test_date = 'never';
+  }
+  return $test_date;
+}
+
+/**
+ * Get results of all tests.
+ */
+function db_consistency_get_result() {
+  return variable_get('db_consistency_result', array());
+}
+
+/**
+ * Set results of all tests.
+ */
+function db_consistency_set_result($test_result) {
+  variable_set('db_consistency_result', $test_result);
+}
+
+/**
+ * Save results of all tests.
+ */
+function db_consistency_save_test_result($test_name, $result_test) {
+  $test_result_save = db_consistency_get_result();
+  $test_result_save[$test_name] = $result_test;
+  db_consistency_set_result($test_result_save);
+}
+
+/**
+ * Returned all available tests.
+ */
+function db_consistency_get_test_info() {
+  require_once drupal_get_path('module', 'db_consistency') .'/db_consistency.tests.inc';
+  $module_tests = array();
+  foreach (module_implements('db_test') as $module) {
+    $test_of_single_module = call_user_func($module .'_'. 'db_test');
+    foreach ($test_of_single_module as $key => $test) {
+      $test_of_single_module[$key]['module'] = $module;
+    }
+    $module_tests = array_merge($module_tests, $test_of_single_module);
+  }
+  return $module_tests;
+}
+
+/**
+ * Run test from hook_db_test().
+ */
+function db_consistency_run_test($info) {
+  $result_query = db_query($info['test_query']);
+  $result_test = db_result($result_query);
+  if ($info['test_type'] == 'negative') {
+    $result_test = !$result_test;
+  };
+  if ($result_test) {
+    return array(
+      'result_passed' => TRUE,
+      'identifiers_list' => '',
+      'time' => time(),
+    );
+  };
+  if ($info['error_list_query']) {
+    $error_list_query = db_query($info['error_list_query']);
+    $identifiers_list = array();
+    $error_row_id = db_result($error_list_query);
+    while ($error_row_id === 0 || $error_row_id === '0' || $error_row_id) {
+      $identifiers_list[] = $error_row_id;
+      $error_row_id = db_result($error_list_query);
+    };
+  };
+  watchdog('db_consistency', t('"@test" test has failed.'), array('@test' => $info['title']), WATCHDOG_ALERT, l(t('Reports'), 'admin/reports/db-consistency'));
+  return array(
+    'result_passed' => FALSE,
+    'identifiers_list' => $identifiers_list,
+    'time' => time(),
+  );
+}
+
+/**
+ * Actualize test information in results.
+ */
+function db_consistency_actualize_test_result() {
+  $test_info = db_consistency_get_test_info();
+  $test_in_variables = db_consistency_get_result();
+  $test_info_diff_test_in_variables = array_diff_key($test_info, $test_in_variables);
+  foreach ($test_info_diff_test_in_variables as $test_name => $info_test) {
+    $test_in_variables[$test_name] = array(
+      'result_passed' => '',
+      'identifiers_list' => '',
+      'time' => '',
+    );
+  };
+  $test_in_variables_diff_test_info = array_diff_key($test_in_variables, $test_info);
+  foreach ($test_in_variables_diff_test_info as $test_name => $test_info) {
+    unset($test_in_variables[$test_name]);
+  };
+  db_consistency_set_result($test_in_variables);
+}
+
+/**
+ * @} End of "name api".
+ */
+
+/**
+ * @name theme Theme implementations.
+ * @{
+ */
+
+/**
+ * Add $style and $identifiers_list to template db-consistency-test.tpl.php
+ */
+function template_preprocess_db_consistency_test(&$variables) {
+  $variables['classes'] = array('group-'. $variables['info']['module']);
+  if (!is_bool($variables['result']['result_passed'])) {
+    $variables['style'] = 'not-check';
+    $variables['result']['time'] = t('not checked');
+    return;
+  };
+  switch ($variables['result']['result_passed']) {
+    case TRUE:
+      $variables['style'] = 'ok';
+      $variables['classes'][] = '"db-consistency-group-passed';
+      break;
+    case FALSE:
+      $variables['classes'][] = '"db-consistency-group-failed';
+      switch ($variables['info']['severity']) {
+        case 'error': $variables['style'] = 'error';
+          break;
+        case 'warning': $variables['style'] = 'warning';
+          break;
+      };
+      break;
+  };
+  if ($variables['result']['result_passed'] == FALSE && !empty($variables['result']['identifiers_list'])) {
+    $identifiers_list .= implode(', ', $variables['result']['identifiers_list']);
+    $variables['identifiers_list'] = t($variables['info']['error_list_description'], array('@list' => $identifiers_list ));
+  };
+  if ($variables['result']['time'] != '') {
+    $variables['result']['time'] = t('Last check: @date', array('@date' => format_date($variables['result']['time'], 'medium')));
+  };
+}
+
+/**
+ * Add list of query to template db-consistency-test.tpl.php
+ */
+function template_preprocess_db_consistency_test_fix(&$variables) {
+  if (!is_array($variables['fix_info']['query'])) {
+    return;
+  }
+  foreach ($variables['fix_info']['query'] as $query) {
+    $list_query .= $query .'<br/>';
+  }
+  $variables['fix_info']['query'] = $list_query;
+}
+
+/**
+ * Theme test element.
+ */
+function db_consistency_test_element($element) {
+  $info = $element['#db_consistency_test_info'];
+  $result = $element['#db_consistency_test_result'];
+  $test_check = drupal_render($element['test_check']);
+  $test_button = drupal_render($element['test_button']);
+  $test_fixes = drupal_render($element['db_consistency_test_fixes']);
+  return theme('db_consistency_test', $info, $result, $test_check, $test_button, $test_fixes);
+}
+
+/**
+ * Theme available fixes in test element.
+ */
+function db_consistency_test_element_fix($fix_element) {
+  $fix_info = $fix_element['#fix_info'];
+  $apply_fix_button = drupal_render($fix_element['apply_fix_button']);
+  return theme('db_consistency_test_fix', $fix_info, $apply_fix_button);
+}
+
+/**
+ * @} End of "name theme".
+ */
+
+/**
+ * @name helper Helper functions.
+ * @{
+ */
+
+/**
+ * Check fix names.
+ * @return array Array with duplicate fix machine names.
+ */
+function _db_consistency_check_fix_unique_names() {
+  $fix_names = array();
+  $duplicate_names = array();
+  foreach (db_consistency_get_test_info() as $test_name => $info) {
+    if (!is_array($info['fixes']) || empty($info['fixes'])) {
+      continue;
+    }
+    foreach ($info['fixes'] as $fix_name => $fix) {
+      if (in_array($fix_name, $fix_names)) {
+        $duplicate_names[] = $fix_name;
+      }
+      else {
+        $fix_names[] = $fix_name;
+      }
+    }
+  }
+  return $duplicate_names;
+}
+
+/**
+ * @} End of "name helper".
+ */

@@ -1,0 +1,7 @@
+name = MetroCatch custom
+package = MetroCatch
+description = Contains different small customizations.
+version = 6.x-1.0
+core = 6.x
+dependencies[] = popup_forms
+dependencies[] = simplenews

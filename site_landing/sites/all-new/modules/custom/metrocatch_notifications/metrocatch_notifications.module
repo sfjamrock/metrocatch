@@ -1,0 +1,547 @@
+<?php
+/**
+ * @file
+ * General function and hook implementations.
+ */
+
+include_once('metrocatch_notifications.features.inc');
+
+/**
+ * @name hooks Hook implementations.
+ * @{
+ */
+
+function metrocatch_notifications_theme() {
+  return array(
+    'metrocatch_notifications_metromail_coupon' => array(
+      'arguments' => array('coupon' => NULL),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_metromail_info().
+ */
+function metrocatch_notifications_metromail_info() {
+  $types = array(
+    // Sends a request to change connection type.
+    'request_pending' => array(
+      'title' => t('Sends a verification request for an initial connection'),
+      'default_template' => '<a href="@profile_url">@username</a> has suggested you to initialize connection.',
+      'placeholders' => array('@uid', '@username', '@profile_url', '!message'),
+    ),
+    'request_request_permanent' => array(
+      'title' => t('Sends a verification request for a permanent connection'),
+      'default_template' => '<a href="@profile_url">@username</a> suggests to make your connection permanent.',
+      'placeholders' => array('@uid', '@username', '@profile_url'),
+    ),
+    // Notifies requester about changes in connection type.
+    'notification_denied' => array(
+      'title' => t('Notifies user about denied connection'),
+      'default_template' => '@username has denied you connection.',
+      'placeholders' => array('@uid', '@username', '@profile_url'),
+    ),
+    'notification_pending_temporary' => array(
+      'title' => t('Notifies user about initialised connection'),
+      'default_template' => '<a href="@profile_url">@username</a> agrees you connection.',
+      'placeholders' => array('@uid', '@username', '@profile_url'),
+    ),
+    'notification_request_permanent_temporary' => array(
+      'title' => t('Notifies user about declined permanent request'),
+      'default_template' => '<a href="@profile_url">@username</a> has declined your request about permanent connection.',
+      'placeholders' => array('@uid', '@username', '@profile_url'),
+    ),
+    'notification_permanent' => array(
+      'title' => t('Notifies user about initialised permanent connection'),
+      'default_template' => '<a href="@profile_url">@username</a> agrees your connection.',
+      'placeholders' => array('@uid', '@username', '@profile_url'),
+    ),
+    'notification_cancelled' => array(
+      'title' => t('Notifies requester user about cancelled connection'),
+      'default_template' => '@username has cancelled your connection.',
+      'placeholders' => array('@uid', '@username', '@profile_url'),
+    ),
+    'notification_expired_uid_from' => array(
+      'title' => t('Notifies initial user about expired connection'),
+      'default_template' => 'Your connection with @username has expired.',
+      'placeholders' => array('@uid', '@username', '@profile_url'),
+    ),
+    'notification_expired_uid_to' => array(
+      'title' => t('Notifies user about expired connection'),
+      'default_template' => 'Your connection with @username has expired.',
+      'placeholders' => array('@uid', '@username', '@profile_url'),
+    ),
+    'notification_deleted' => array(
+      'title' => t('Notifies user about removal of his connection'),
+      'description' => t('This notification is sent when one of the connected user accounts is being permanently deleted'),
+      'default_template' => '@username has deleted his account on metrocatch.',
+      'placeholders' => array('@username'),
+    ),
+    'birthday_notification' => array(
+      'title' => t('Notifies users about their connection\'s birthdays'),
+      'default_template' => '<a href="@profile_url">@username</a> has a birthday today.',
+      'placeholders' => array('@uid', '@username', '@profile_url'),
+    ),
+    'profile_changes' => array(
+      'title' => t('Notifies users about changes in their connection\'s profiles'),
+      'default_template' => '<a href="@profile_url">@username</a>  !changes',
+      'placeholders' => array('@uid', '@username', '@profile_url', '!changes'),
+    ),
+    'new_conversation_comment' => array(
+      'title' => t('Notifies user\'s connections about new comment in conversation they are involved in'),
+      'default_template' => "<a href=\"@actor_profile_url\">@actor_username</a> has left a comment on <a href=\"@wall_owner_profile_url\">@wall_owner_username's</a> wall.",
+      'placeholders' => array(
+        '@actor_uid', '@actor_username', '@actor_profile_url',
+        '@wall_owner', '@wall_owner_username', '@wall_owner_profile_url', '@wall_owner_pronoun',
+      ),
+    ),
+    'metropoints_received' => array(
+      'title' => t('Notifies user about received metropoints and Badge'),
+      'default_template' => "You have received @metropoints_plural and \"!badge\" badge.\r\n!reason",
+      'placeholders' => array(
+        '@num',
+        '@metropoints_plural',
+        '!reason',
+        '!badge'
+      ),
+    ),
+    'coupon_received' => array(
+      'title' => t('Notifies users about received coupon.'),
+      'default_template' => 'You have received discount coupon !coupon_code (@discount_percents%).',
+      'placeholders' => array('!coupon_code', '@discount_percents'),
+    ),
+  );
+  $default_placeholders = metrocatch_notifications_metromail_default_placeholders();
+  foreach ($types as $type => $specification) {
+    $types[$type]['placeholders'] = array_merge($types[$type]['placeholders'], $default_placeholders);
+  }
+  return $types;
+}
+
+/**
+ * Implementation of hook_metromail_message_additions().
+ */
+function metrocatch_notifications_metromail_message_additions($data) {
+  if (!empty($data['actions'])) {
+    drupal_add_js(drupal_get_path('module', 'metrocatch_connect') .'/metrocatch_connect.js');
+    return '<div class="metromail-message-connection-actions">'. implode(' | ', $data['actions']) .'</div>';
+  }
+
+}
+
+/**
+ * Implementation of hook_metromail_message_alter().
+ */
+function metrocatch_notifications_metromail_message_alter($message) {
+  switch ($message->type) {
+    case 'coupon_received':
+      if (!empty($message->data['metrocatch_notifications']['coupon_id']) && module_exists('uc_coupon')) {
+        $coupon = uc_coupon_load($message->data['metrocatch_notifications']['coupon_id']);
+        $coupon = uc_coupon_validate($coupon->code, NULL, NULL);
+        $message->data['placeholders']['!coupon_code'] = theme('metrocatch_notifications_metromail_coupon', $coupon);
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_metrocatch_connect_api().
+ */
+function metrocatch_notifications_metrocatch_connect_api($op, $connection) {
+  switch ($op) {
+    case 'insert':
+    case 'update':
+      metrocatch_notifications_notify_connection($connection);
+      break;
+    case 'delete':
+      // If an active connection is being removed, notify user:
+      if (in_array($connection['type'], metrocatch_connect_get_active_connection_types())) {
+        $connection['data']['requestee'] = $connection['connector'];
+        $connection['data']['requester'] = ($connection['connector'] == $connection['uid_from'] ? $connection['uid_to'] : $connection['uid_from']);
+        $connection['type'] = 'deleted';
+        metrocatch_notifications_notify_connection($connection);
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_metrocatch_profile_birthday_soon().
+ *
+ * Notifies users about their connections birthdays.
+ *
+ * @param $uid
+ *   The ID of the user who has a birthday soon.
+ */
+function metrocatch_notifications_metrocatch_profile_birthday_soon($uid) {
+  $birthday_private = db_result(db_query(
+    "SELECT 1
+    FROM {metrocatch_profile_field_permissions}
+    WHERE uid = %d AND field_name = 'field_profile_birth_date' AND access = 1", $uid
+  ));
+  if ($birthday_private) {
+    // If birthday of a person is a private field we should not notify
+    // his connections.
+    return;
+  }
+  $account = user_load($uid);
+  foreach (metrocatch_connect_load_user_connection_uids($uid) as $recipient_uid) {
+    $recipient = user_load($recipient_uid);
+    $language = user_preferred_language($recipient);
+    $params = array(
+      'uid_from' => 0, // this is system message
+      'uid_to' => $recipient->uid,
+      'placeholders' => array(
+        '@uid' => $account->uid,
+        '@username' => $account->name,
+        '@profile_url' => url('user/'. $account->uid, array('absolute' => TRUE, 'language' => $language)),
+      ),
+      'data' => array(
+        'metrocatch_notifications' => array(
+          'actions' => array(
+            'send_message' => l(t('Send message'), "user/{$uid}/sendmessage", array('query' => array('recipient' => $name->first))),
+          ),
+        ),
+      ),
+    );
+    $params['placeholders'] += metrocatch_notifications_metromail_default_placeholders_values($recipient);
+    metromail_send_special_message('birthday_notification', $params);
+  }
+}
+
+/**
+ * Implementation of hook_metrocatch_profile_changed().
+ *
+ * Notifies user's connections about changes in his profile.
+ *
+ * @param $account
+ *   stdClass object of user whose profile is changed.
+ * @param $profile
+ *   stdClass object of fully-loaded user profile.
+ * @param $changes
+ *   An array of profile changes with following structure:
+ *   - $op: a string indicating field chage, e.g. 'added', 'removed', 'updated'.
+ *     - $changed_fields: an array of changed fields with following structure:
+ *       - field: machine-readable name of changed field.
+ *       - title: human-readable name of changed field.
+ *       - value: new field value.
+ */
+function metrocatch_notifications_metrocatch_profile_changed($account, $profile, $changes) {
+  ksort($changes);
+  $pronoun = ($profile->field_profile_sex[0]['value'] == 'man' ? 'his' : 'her');
+  $changes_text = '';
+  $counter = 0;
+  foreach ($changes as $op => $changed_fields) {
+    $change_text = '';
+    if ($counter == 0) {
+      $change_text .= ' has '. $op .' '. $pronoun;
+    }
+    else {
+      $change_text .= ', '. $op;
+    }
+    $changed_fields_names = array();
+    foreach ($changed_fields as $changed_field) {
+      $changed_fields_names[] = $changed_field['title'];
+    }
+    $change_text .= ' '. implode(', ', $changed_fields_names);
+    $changes_text .= t($change_text);
+    $counter++;
+  }
+  $changes_text .= '.';
+  foreach (metrocatch_connect_load_user_connections($account->uid) as $connection) {
+    $recipient = user_load($connection['connector']);
+    $language = user_preferred_language($recipient);
+    $params = array(
+      'uid_from' => 0, // this is system message,
+      'uid_to' => $recipient->uid,
+      'placeholders' => array(
+        '@uid' => $account->uid,
+        '@username' => $account->name,
+        '@profile_url' => url('user/'. $account->uid, array('absolute' => TRUE, 'language' => $language)),
+        '!changes' => $changes_text,
+      ),
+    );
+    $params['placeholders'] += metrocatch_notifications_metromail_default_placeholders_values($recipient);
+    metromail_send_special_message('profile_changes', $params);
+  }
+}
+
+/**
+ * Implementation of hook_metrocatch_conversation_new_comment().
+ *
+ * Notifies user's connections about new comment, if they are involved in conversation.
+ */
+function metrocatch_notifications_metrocatch_conversation_new_comment($account, $node, $comment) {
+  $args = array($node->nid, $account->uid, $account->uid, $account->uid, $account->uid);
+  $active_types = metrocatch_connect_get_active_connection_types();
+  $args = array_merge($args, $active_types);
+  // Get connections between user and users who have left comments
+  // in this thread and connection between user and node author.
+  $result = db_query(
+    "SELECT DISTINCT( cc.cid ),
+      cc.*,
+      n.nid AS entry_id,
+      n.created AS entry_created,
+      cck.field_conversation_entry_conv_id_uid AS wall_owner
+    FROM {comments} c
+    INNER JOIN {node} n ON n.nid = c.nid
+    INNER JOIN {content_type_conversation_entry} cck ON cck.vid = n.vid
+    INNER JOIN {metrocatch_connect_connection} cc ON ( cc.uid_to = c.uid OR cc.uid_from = c.uid ) OR ( cc.uid_to = n.uid OR cc.uid_from = n.uid )
+    WHERE  c.nid = %d
+      AND (
+        (cc.uid_to = c.uid AND cc.uid_from = %d)
+        OR (cc.uid_from = c.uid AND cc.uid_to = %d)
+        OR (cc.uid_to = n.uid AND cc.uid_from = %d)
+        OR (cc.uid_from = n.uid AND cc.uid_to = %d)
+      )
+      AND cc.type IN ( ". db_placeholders($active_types, 'varchar') .") ",
+    $args
+  );
+  while ($connection = db_fetch_array($result)) {
+    $connection = _metrocatch_connect_prepare_connection($connection, $account->uid);
+    $wall_owner = user_load($connection['wall_owner']);
+    if ($wall_owner->uid == $connection['connector']) {
+      $wall_owner_pronoun = t('your');
+    }
+    elseif ($wall_owner->uid == $account->uid) {
+      $wall_owner_pronoun = t('his');
+    }
+    else {
+      $wall_owner_pronoun = check_plain($wall_owner->name) ."'s";
+    }
+    $offset = metrocatch_conversation_get_node_offset($wall_owner->uid, $connection['entry_created']);
+    $recipient = user_load($connection['connector']);
+    $language = user_preferred_language($recipient);
+    $params = array(
+      'uid_from' => 0, // this is a system message
+      'uid_to' => $recipient->uid,
+      'placeholders' => array(
+        '@actor_uid' => $account->uid,
+        '@actor_username' => $account->name,
+        '@actor_profile_url' => url('user/'. $account->uid, array('absolute' => TRUE, 'language' => $language)),
+        '@wall_owner_uid' => $wall_owner->uid,
+        '@wall_owner_username' => $wall_owner->name,
+        '@wall_owner_profile_url' => url('user/'. $wall_owner->uid, array('absolute' => TRUE, 'language' => $language)),
+        '@wall_owner_pronoun' => $wall_owner_pronoun,
+      ),
+      'data' => array(
+        'metrocatch_notifications' => array(
+          'actions' => array(
+            'view_comment' => l(t('View @actor\'s comment', array('@actor' => check_plain($account->name)), $language->language), "user/{$wall_owner->uid}/conversation/{$offset}", array('query' => array('expand' => $connection['entry_id']), 'fragment' => "comment-{$comment['cid']}", 'language' => $language)),
+          ),
+        ),
+      ),
+    );
+    $params['placeholders'] += metrocatch_notifications_metromail_default_placeholders_values($recipient);
+    metromail_send_special_message('new_conversation_comment', $params);
+  }
+}
+
+/**
+ * Implementation of hook_metrocatch_custom_metropoints_added().
+ *
+ * Send metromail notification about added metropoints.
+ */
+function metrocatch_notifications_metrocatch_custom_badge_metropoints_added($action, $account, $badge) {
+  $params = array(
+    'uid_from' => 0, // this is a system message
+    'uid_to' => $account->uid,
+    'placeholders' => array(
+      '@num' => $action->parameters['number'],
+      '@metropoints_plural' => format_plural($action->parameters['number'], 'metropoint', 'metropoints'),
+      '!badge' => $badge->name,
+      '!reason' => $action->parameters['reason'],
+    ),
+  );
+  $params['placeholders'] += metrocatch_notifications_metromail_default_placeholders_values($account);
+  metromail_send_special_message('metropoints_received', $params);
+}
+
+/**
+ * Implementation of hook_uc_coupon_save().
+ */
+function metrocatch_notifications_uc_coupon_save($coupon) {
+  if ($coupon->type != 'percentage' || empty($coupon->data['users'])) {
+    return;
+  }
+  // Send a metromail to user.
+  metromail_send_special_message(
+    'coupon_received',
+    array(
+      'uid_from' => 0, // This is a system message.
+      'uid_to' => reset($coupon->data['users']),
+      'placeholders' => array(
+        '!coupon_code' => $coupon->code,
+        '@discount_percents' => $coupon->value,
+      ),
+      'data' => array(
+        'metrocatch_notifications' => array(
+          'coupon_id' => $coupon->cid,
+        ),
+      ),
+    )
+  );
+}
+
+/**
+ * @} End of "name hooks".
+ */
+
+/**
+ * @name helper Helper functions.
+ * @{
+ */
+
+/**
+ * Prepares and sends a verification request or a notification message
+ * about changes in connection state.
+ *
+ * @param $connection
+ *   An array representing fully-loaded connection.
+ *
+ * @see metrocatch_connect_save_connection()
+ */
+function metrocatch_notifications_notify_connection($connection) {
+  $requester = $connection['data']['requester'] == $connection['account_to']->uid ? $connection['account_to'] : $connection['account_from'];
+  $requestee = $requester->uid == $connection['uid_to'] ? $connection['account_from'] : $connection['account_to'];
+  $language = user_preferred_language($requestee);
+  $params = array(
+    'new_type' => $connection['type'],
+    'uid_from' => 0, // this is system message
+    'uid_to' => $requestee->uid,
+    'placeholders' => array(
+      '@uid' => $requester->uid,
+      '@username' => $requester->name,
+      '@profile_url' => url('user/'. $requester->uid, array('absolute' => TRUE, 'language' => $language)),
+      '!message' => isset($connection['data']['message']) ? nl2br(check_plain($connection['data']['message'])) : '',
+    ),
+    'data' => array(
+      'metrocatch_notifications' => array(
+        'actions' => array(),
+      ),
+    ),
+  );
+  $params['placeholders'] += metrocatch_notifications_metromail_default_placeholders_values($requestee);
+  switch ($connection['type']) {
+    // this connection type transitions need other user's verification:
+    case 'pending':
+    case 'request_permanent':
+      $type = 'request_'. $connection['type'];
+      if ($connection['type'] == 'pending') {
+        $positive = 'permanent';
+        $negative = 'denied';
+      }
+      elseif ($connection['type'] == 'request_permanent') {
+        $positive = 'permanent';
+        $negative = 'temporary';
+      }
+      $params['data']['metrocatch_notifications']['actions'] = array(
+        'accept' => metrocatch_connect_get_connection_transition_link($connection, $positive, $requestee, array(), TRUE),
+        'deny' => metrocatch_connect_get_connection_transition_link($connection, $negative, $requestee, array(), TRUE),
+      );
+      break;
+    case 'temporary':
+      $type = 'notification_'. $connection['original']['type'] .'_'. $connection['type'];
+      break;
+    // we should notify both users about expired connection.
+    case 'expired':
+      $dummy_types = array(
+        'expired_uid_from' => array(
+          'requester' => $connection['uid_to'],
+          'requestee' => $connection['uid_from']
+        ),
+        'expired_uid_to' => array(
+          'requester' => $connection['uid_from'],
+          'requestee' => $connection['uid_to']
+        ),
+      );
+      foreach ($dummy_types as $dummy_type => $recipients) {
+        $connection['type'] = $dummy_type;
+        $connection['data']['requester'] = $recipients['requester'];
+        $connection['data']['requestee'] = $recipients['requestee'];
+        metrocatch_notifications_notify_connection($connection);
+      }
+      break;
+    // all the others
+    default:
+      $type = 'notification_'. $connection['type'];
+      break;
+  }
+  metromail_send_special_message($type, $params);
+}
+
+/**
+ * Get the list of default metromail placeholders.
+ *
+ * These placeholders are available in all metromail notifications.
+ *
+ * @see metrocatch_notifications_metromail_default_placeholders_values()
+ */
+function metrocatch_notifications_metromail_default_placeholders() {
+  return array('@recipient_uid', '@recipient_username', '@recipient_profile_url', '@metromail_url', '@site_name', '@site_url', '@sent_date');
+}
+
+/**
+ * Get the values of default metromail placeholders.
+ *
+ * @param @recipient
+ *   StdClass object of a message recipient.
+ */
+function metrocatch_notifications_metromail_default_placeholders_values($recipient) {
+  $values = array();
+  foreach (metrocatch_notifications_metromail_default_placeholders() as $placeholder) {
+    switch ($placeholder) {
+      case '@site_name':
+        $value = variable_get('site_name', '');
+        break;
+      case '@site_url':
+        $value = url('<front>', array('absolute' => TRUE, 'language' => $language));
+        break;
+      case '@sent_date':
+        $value = format_date(time());
+        break;
+      case '@recipient_uid':
+        $value = $recipient->uid;
+        break;
+      case '@recipient_username':
+        $value = $recipient->name;
+        break;
+      case '@recipient_profile_url':
+        $value = url('user/'. $recipient->uid, array('absolute' => TRUE));
+        break;
+      case '@metromail_url':
+        $language = user_preferred_language($recipient);
+        $value = url('metromail', array('absolute' => TRUE, 'language' => $language));
+        break;
+      default:
+        $value = $placeholder;
+    }
+    $values[$placeholder] = $value;
+  }
+  return $values;
+}
+
+/**
+ * @} End of "name helper".
+ */
+
+/**
+ * @name theme Theme implementations.
+ * @{
+ */
+
+/**
+ * Return HTML output of the promo code in metromail notification.
+ *
+ * @param $coupon
+ *   stdClass object of the coupon.
+ */
+function theme_metrocatch_notifications_metromail_coupon($coupon) {
+  $class = (empty($coupon->usage['codes']) ? 'metrocatch-notifications-coupon-status-active' : 'metrocatch-notifications-coupon-status-used');
+  return '<span class="'. $class .'">'. $coupon->code .'</span>';
+}
+
+
+/**
+ * @} End of "name theme".
+ */

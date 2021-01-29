@@ -1,0 +1,290 @@
+
+div.user-profile-wrapper {
+  border: 0;
+}
+
+.user-profile {
+  background: rgba(255, 255, 255, 0.25);
+  position: relative;
+  color: #fff;
+  height: 244px;
+  margin-bottom: 36px;
+}
+
+.user-profile a {
+  color: #fff;
+}
+
+div.user-profile-left-column {
+  width: 230px;
+}
+
+div.user-profile-right-column {
+  margin-left: 226px;
+  padding-left: 10px;
+  padding-top: 9px;
+}
+
+.user-profile-subfeatured div.user-profile-right-column {
+  margin-left: 225px;
+}
+
+.page.page-user-connections .metrocatch-profile-username-wrapper {
+  margin: 13px 0 0;
+}
+
+.metrocatch-profile-user-avatar {
+  border: 10px solid #fff;
+  height: 224px;
+}
+
+.metrocatch-profile-baseinfo {
+  padding-top: 10px;
+  margin-left: 235px;
+  font-size: 14px;
+}
+
+.metrocatch-profile-baseinfo a {
+  font-size: 15px;
+}
+
+.profile-photos {
+  position: absolute;
+  bottom: 16px;
+}
+
+.profile-more a {
+  color: #3D3D3D;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.metrocatch-profile-fields {
+  margin-top: 13px;
+}
+
+span.photos-separator {
+  color: #fff;
+}
+
+.profile-metropoints,
+.profile-metropoints a {
+  color: #fafafa;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.page.page-user-connections .profile-metropoints,
+.page.page-user-connections .profile-metropoints a {
+  color: #d1c4fa;
+  font-size: 15px;
+  text-decoration: underline;
+  margin-left: 2px;
+  margin-top: -4px;
+}
+
+.page.page-user-connections span.photos-separator {
+  color: #878787;
+}
+
+.user-profile-userpic-pin {
+  position: absolute;
+  top: -28px;
+  left: -20px;
+  background: url('../images/photo-pin.png') top left no-repeat;
+  width: 42px;
+  height: 74px;
+  z-index: 8;
+}
+
+.user-profile-teaser .user-profile-userpic-pin,
+.user-profile-featured .user-profile-userpic-pin {
+  left: 0;
+  top: -23px;
+}
+
+.user-profile-interest {
+  font-size: 20px;
+  color: #000;
+  text-align: center;
+  -webkit-transform: rotate(-2deg);
+  -moz-transform: rotate(-2deg);
+  transform: rotate(-2deg);
+  position: relative;
+  top: -15px;
+  left: -12px;
+  z-index: 9;
+}
+
+.user-profile-marketing-text {
+  margin: 0 0.5em 0 0;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.user-profile-marketing-text p {
+  display: inline;
+}
+
+.user-profile-learn-more a {
+  color: #000;
+  text-transform: uppercase;
+  font-weight: bold;
+  font-size: 11px;
+}
+
+.user-profile-left-column {
+
+}
+
+.user-profile-baseinfo {
+  margin-top: 1em;
+}
+
+.user-profile-subfeatured .user-profile-baseinfo {
+  margin: 0.5em 0.5em 0 0;
+}
+
+.user-profile.user-profile-featured {
+  height: 246px;
+}
+
+.user-profile-share-links a {
+  color: #fff;
+  font-size: 15px;
+}
+
+.profile-moreinfo-field-label {
+  margin: 0;
+}
+
+.profile-moreinfo-field-value,
+.profile-moreinfo-field-value-trimmed {
+  padding: 10px 10px 15px 12px;
+}
+
+.profile-moreinfo-field-label.group-title,
+.metrocatch-conversation-title.group-title {
+  margin-right: -13px;
+  margin-left: 3px;
+}
+
+.user-profile-moreinfo .user-profile-baseinfo {
+  margin: 0;
+}
+
+.metrocatch-profile-default-picture,
+.metrocatch-profile-default-picture img {
+  background: url("../images/default-userpic-background.png") top left repeat-x #fff;
+}
+
+.user-profile-featured-teaser .userpic,
+.user-profile-subfeatured .userpic {
+  left: -3px;
+  top: 1px;
+  position: relative;
+}
+
+.userpic-canvas-medium,
+.userpic-canvas-large {
+  position: absolute;
+  left: -20px;
+  top: -20px;
+  z-index: 5;
+}
+
+.userpic-canvas-medium {
+  width: 246px;
+  height: 287px;
+  background: url('../images/userpic-canvas-wo-interest-reworked.png') top left no-repeat;
+}
+
+.userpic-canvas-large {
+  width: 247px;
+  height: 323px;
+  background: url('../images/userpic-canvas-large.png') top left no-repeat;
+}
+
+.userpic .metrocatch-profile-default-picture {
+  position: relative;
+  z-index: 1;
+  top: -6px;
+  left: -5px;
+}
+
+.user-profile-featured .userpic .metrocatch-profile-default-picture {
+  border: 10px solid #fff;
+  top: 0;
+  left: 0;
+}
+
+.metrocatch-profile-default-picture {
+  overflow: hidden;
+}
+
+.man-interested-in-women.icon-small,
+.woman-interested-in-men.icon-small,
+.woman-interested-in-women.icon-small,
+.man-interested-in-men.icon-small {
+  width: 20px;
+  height: 40px;
+  line-height: 40px;
+}
+
+.man-interested-in-women.icon-small {
+  background: url('../images/icons/mw-icon-small.png') left 10px no-repeat;
+}
+
+.woman-interested-in-men.icon-small {
+  background: url('../images/icons/wm-icon-small.png') left 10px no-repeat;
+}
+
+.woman-interested-in-women.icon-small {
+  background: url('../images/icons/ww-icon-small.png') left 10px no-repeat;
+}
+
+.man-interested-in-men.icon-small {
+  background: url('../images/icons/mm-icon-small.png') left 10px no-repeat;
+}
+
+.user-profile-username-wrapper {
+  position: relative;
+  left: -3px;
+  top: -4px;
+  margin-bottom: 17px;
+}
+
+.user-profile-username-wrapper > div,
+.metrocatch-profile-username-wrapper > div {
+  float: left;
+  padding-right: 5px;
+}
+
+.page.page-user-connections .metrocatch-profile-username-wrapper > div {
+  display: none;
+}
+
+.user-profile h2 {
+  font-size: 31px;
+  margin: 8px 0;
+}
+
+.user-profile-photos {
+  position: absolute;
+  bottom: 40px;
+  font-size: 15px;
+}
+
+.metrocatch-profile-user-short-info .metrocatch-profile-connections-count {
+  float: none;
+  position: absolute;
+  top: -10px;
+}
+
+.metrocatch-profile-username-wrapper,
+.metrocatch-profile-username-wrapper a {
+  font-size: 31px;
+  line-height: 40px;
+  font-weight: bold;
+}

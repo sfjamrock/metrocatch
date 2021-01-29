@@ -1,0 +1,87 @@
+/**
+ * @file
+ * Navigation Styling
+ *
+ * Default menu styling (ul.menu) is defined in system-menus.css.
+ */
+
+
+/*
+ * The active item in a Drupal menu
+ */
+li a.active {
+  color: #000;
+}
+
+/*
+ * Navigation bar
+ */
+#navigation {
+  
+}
+
+.region-navigation {
+}
+
+/*
+ * Primary and Secondary menu links
+ */
+#main-menu {
+}
+
+#secondary-menu {
+}
+
+/*
+ * Menu blocks
+ */
+.block-menu {
+}
+
+/*
+ * "Menu block" blocks. See http://drupal.org/project/menu_block
+ */
+.block-menu_block {
+}
+
+#metrocatch-footer-title-prefix {
+  height: 46px;
+  background: url('../images/metrocatch-footer-title.png') 97% top no-repeat;
+  padding-bottom: 5px;
+}
+
+#block-menu-menu-metrocatch-footer-menu {
+  float: right;
+}
+
+#block-menu-menu-metrocatch-footer-menu  ul.menu {
+  margin: 15px 0px;
+}
+
+#block-menu-menu-metrocatch-footer-menu li {
+  float: left;
+  padding: 0 10px;
+  list-style: none;
+  border-left: 1px solid #404040;
+}
+
+#block-menu-menu-metrocatch-footer-menu .menu:after {
+  content: ".";
+  display: block;
+  height: 0;
+  clear: both;
+  visibility: hidden;
+}
+
+#block-menu-menu-metrocatch-footer-menu li.first {
+  border: none;
+}
+
+#block-menu-menu-metrocatch-footer-menu,
+#block-menu-menu-metrocatch-footer-menu a {
+  color: #fff;
+  font-size: 13px;
+  line-height: 13px;
+  text-decoration: none;
+}
+

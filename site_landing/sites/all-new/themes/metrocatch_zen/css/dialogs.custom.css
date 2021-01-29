@@ -1,0 +1,67 @@
+
+html .ui-dialog .ui-dialog-titlebar,
+html .popup-forms-dialog-wrapper .ui-dialog .ui-dialog-titlebar,
+html .metrocatch-gallery-dialog .ui-dialog .ui-dialog-titlebar {
+  color: #fff;
+  padding: 0.5em 0.3em 0.5em 1em;
+  background: url('../images/popup-title-bg.png') top left repeat-x #6045b1;
+  -moz-border-radius: 10px 10px 0 0;
+  -webkit-border-radius: 10px 10px 0 0;
+  -o-border-radius: 10px 10px 0 0;
+  border-radius: 10px 10px 0 0;
+  border: 0;
+}
+
+html .ui-dialog,
+html .popup-forms-dialog-wrapper .ui-dialog {
+  padding: 0;
+  width: 615px !important;
+  -moz-border-radius: 10px;
+  -webkit-border-radius: 10px;
+  -o-border-radius: 10px;
+  border-radius: 10px;
+  border: 1px solid #fff;
+  background: linear-gradient(center, #fff 0%, #dbdbdb 100%) #fff;
+  background: -o-linear-gradient(top center, #fff 0%, #dbdbdb 100%) #fff;
+  background: -moz-linear-gradient(top center, #fff 0%, #dbdbdb 100%) #fff;
+  background: -webkit-linear-gradient(top center, #fff 0%, #dbdbdb 100%) #fff;
+  background: -ms-linear-gradient(top center, #fff 0%, #dbdbdb 100%) #fff;
+  background: -webkit-gradient(linear, left top, left bottom, from(#fff), to(#dbdbdb)) #fff;
+  -moz-box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(0, 0, 0, 0.1);
+  -webkit-box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(0, 0, 0, 0.1);
+  -o-box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(0, 0, 0, 0.1);
+}
+
+html .popup-forms-dialog-wrapper .ui-dialog.form-id-metrocatch_connect_connect_form {
+  width: auto !important;
+}
+
+html .ui-dialog .ui-dialog-content,
+html .popup-forms-dialog-wrapper .ui-dialog .ui-dialog-content {
+  -moz-border-radius: 0 0 10px 10px;
+  -webkit-border-radius: 0 0 10px 10px;
+  -o-border-radius: 0 0 10px 10px;
+  border-radius: 0 0 10px 10px;
+  border: 0px;
+  padding-bottom: 20px;
+  background: url('../images/popup-bg-bottom.png') bottom left repeat-x #fff;
+  background: linear-gradient(center, rgba(255, 255, 255, 0.38) 60%, rgba(146, 122, 217, 0.39) 100%) rgba(255, 255, 255, 0.38);
+  background: -o-linear-gradient(top center, rgba(255, 255, 255, 0.38) 60%, rgba(146, 122, 217, 0.39) 100%) rgba(255, 255, 255, 0.38);
+  background: -moz-linear-gradient(top center, rgba(255, 255, 255, 0.38) 60%, rgba(146, 122, 217, 0.39) 100%) rgba(255, 255, 255, 0.38);
+  background: -webkit-linear-gradient(top center, rgba(255, 255, 255, 0.38) 60%, rgba(146, 122, 217, 0.39) 100%) rgba(255, 255, 255, 0.38);
+  background: -ms-linear-gradient(top center, rgba(255, 255, 255, 0.38) 60%, rgba(146, 122, 217, 0.39) 100%) rgba(255, 255, 255, 0.38);
+  background: -webkit-gradient(linear, left top, left bottom, from(rgba(255, 255, 255, 0.38)), to(rgba(146, 122, 217, 0.39))) rgba(255, 255, 255, 0.38);
+}
+
+html .ui-dialog #messages-wrapper {
+  background: none;
+  padding: 0;
+}
+
+html .ui-dialog .ui-dialog-titlebar-close,
+html .popup-forms-dialog-wrapper .ui-dialog .ui-dialog-titlebar-close {
+  margin: 0;
+  top: 12px;
+  right: 10px;
+}

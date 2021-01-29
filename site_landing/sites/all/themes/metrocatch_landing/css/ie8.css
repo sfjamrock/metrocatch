@@ -1,0 +1,15 @@
+/**
+ * @file
+ * CSS targeted specifically for Internet Explorer 8 for Windows.
+ *
+ * Any CSS in this file will override the rules specified in the ie.css file.
+ */
+
+/* .front #content {*/
+/*  width: 950px;
+ }*/
+
+.front #page {
+  width: 941px;
+}
+

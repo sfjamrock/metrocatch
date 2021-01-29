@@ -1,0 +1,131 @@
+<?php
+/**
+ * @file
+ * Module install() and uninstall() process functions
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function metromail_install() {
+  drupal_install_schema('metromail');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function metromail_uninstall() {
+  drupal_uninstall_schema('metromail');
+  db_query("DELETE FROM {variables} WHERE name LIKE('%s%%')", 'metromail_');
+  cache_clear_all('variables', 'cache');
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function metromail_schema() {
+  return array(
+    'metromail_messages' => array(
+      'description' => 'Stores MetroMail messages',
+      'fields' => array(
+        'mid' => array(
+          'description' => 'The primary identifier for a Message.',
+          'type' => 'serial',
+          'not null' => TRUE,
+        ),
+        'pid' => array(
+          'description' => 'The message MID to which this message is a reply. If set to 0, this is a top-level message (thread).',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'thread_id' => array(
+          'description' => 'The thread ID. Actually this is id of a top level message in tree.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'type' => array(
+          'description' => 'The type of this message. Other modules can define their own types of MetroMail messages. Default is METROMAIL_MESSAGE_DEFAULT.',
+          'type' => 'varchar',
+          'length' => 32,
+          'not null' => TRUE,
+          'default' => '',
+        ),
+        'title' => array(
+          'description' => 'The title of this message, plain text.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => '',
+        ),
+        'body' => array(
+          'description' => 'The text of this message.',
+          'type' => 'text',
+          'not null' => TRUE,
+        ),
+        'uid_from' => array(
+          'description' => 'The uid of the user who sends this message.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'uid_to' => array(
+          'description' => 'The recipient\'s {users}.uid. 0 means this is a broadcast message.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'was_read' => array(
+          'description' => 'Boolean indicating whether the message was read by the recipient.',
+          'type' => 'int',
+          'size' => 'tiny',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'sent' => array(
+          'description' => 'The Unix timestamp when this message was created.',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'data' => array(
+          'description' => 'Serialized array of additional data about this message. E.g. it may contain the list of recipients if this is a broadcasting message.',
+          'type' => 'text',
+          'not null' => FALSE,
+          'default' => NULL,
+          'size' => 'big',
+          'serialize' => TRUE,
+        ),
+      ),
+      'indexes' => array(
+        'thread' => array('pid', 'thread_id'),
+        'thread_id' => array('thread_id'),
+        'type' => array(array('type', 8)),
+        'uid_from' => array('uid_from'),
+        'uid_to' => array('uid_to'),
+        'was_read' => array('was_read'),
+        'sent' => array('sent'),
+      ),
+      'primary key' => array('mid'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Introduces some new fields.
+ */
+function metromail_update_6102() {
+  $schema = drupal_get_schema_unprocessed('metromail', 'metromail_messages');
+  _drupal_initialize_schema('metromail', $schema);
+
+  $ret = array();
+  db_add_field($ret, 'metromail_messages', 'pid', $schema['fields']['pid']);
+  db_add_field($ret, 'metromail_messages', 'thread_id', $schema['fields']['thread_id']);
+  db_add_index($ret, 'metromail_messages', 'thread', array('pid', 'thread_id'));
+  db_add_index($ret, 'metromail_messages', 'thread_id', array('thread_id'));
+  return $ret;
+}

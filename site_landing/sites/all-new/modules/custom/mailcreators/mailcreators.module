@@ -1,0 +1,104 @@
+<?php
+
+/**
+ * Implementation of hook_mail().
+ */
+function mailcreators_mail($key, &$message, $params) {
+  $message['subject'] = $params['subject'];
+  $message['body'] = $params['body'];
+}
+
+/**
+ * Implementation of hook_mailcreators_info().
+ */
+function mailcreators_mailcreators_info() {
+  return array(
+    'test' => array(
+      'class' => 'TestMailCreator',
+      'parent' => NULL,
+      'file' => 'mailcreator_test.inc',
+      'path' => drupal_get_path('module', 'mailcreators'), // Not required if file is in module's dir.
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_modules_uninstalled() from Drupal 7.
+ * Call it from your hook_uninstall() as follows:
+ * module_invoke_all('modules_uninstalled', array('yourmodulename'));
+ */
+function mailcreators_modules_uninstalled($modules) {
+  foreach ($modules as $modulename) {
+    if (!module_hook($modulename, 'mailcreators_info')) {
+      continue;
+    }
+    $creators = module_invoke($modulename, 'mailcreators_info');
+    foreach ($creators as $name => $creator_info) {
+      // Assignment is intended.
+      if ($creator = mailcreators_get_creator($name)) {
+        $creator->reset();
+      }
+    }
+  }
+}
+
+/**
+ * Get all mailcreators info defined by modules.
+ * @return array of mailcreators.
+ */
+function mailcreators_get_creators() {
+  static $creators;
+  if (!isset($creators)) {
+    $creators = array();
+    foreach (module_implements('mailcreators_info') as $module) {
+      $module_creators = module_invoke($module, 'mailcreators_info');
+      foreach ($module_creators as $name => $info) {
+        $info['module'] = $module;
+        $info['name'] = $name;
+        $creators[$name] = $info;
+      }
+    }
+  }
+  return $creators;
+}
+
+/**
+ * Include specific creator file.
+ * @param $name Name of the creator.
+ * @return boolean If the file was included successfully.
+ */
+function mailcreators_include_creator($name) {
+  module_load_include('inc', 'mailcreators', 'mailcreator_abstract');
+  $creators = mailcreators_get_creators();
+  $creators_hierarchy = array();
+  do {
+    $current_creator = $creators[$name];
+    $creators_hierarchy[] = $current_creator;
+    $name = $current_creator['parent'];
+  } while (isset($current_creator['parent']));
+  foreach (array_reverse($creators_hierarchy) as $creator) {
+    $full_name = ((isset($creator['path']))?$creator['path']:drupal_get_path('module', $creator['module'])) .'/'. $creator['file'];
+    if (!is_file('./'. $full_name)) {
+      return FALSE;
+    }
+    require_once($full_name);
+  }
+  return TRUE;
+}
+
+/**
+ * Get intance of specific creator class.
+ * @param $name Name of the creator.
+ * @return creator instance.
+ */
+function mailcreators_get_creator($name) {
+  if (!mailcreators_include_creator($name)) {
+    return NULL;
+  }
+  $creators = mailcreators_get_creators();
+  $current_creator = $creators[$name];
+  if (isset($current_creator) && class_exists($current_creator['class'])) {
+    return new $current_creator['class'];
+  }
+  return NULL;
+}

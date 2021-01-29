@@ -1,0 +1,388 @@
+<?php
+/**
+ * @file
+ * install() and uninstall() hooks and related functions
+ */
+
+/**
+ * Implementation of hook_schema().
+ */
+function cyd_utils_schema() {
+  return array(
+    'cyd_utils_pages' => array(
+      'description' => 'A table to store informaion about Drupal page requests.',
+      'fields' => array(
+        'pid' => array(
+          'description' => 'Page dentifier.',
+          'type' => 'serial',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'uid' => array(
+          'description' => 'The {users}.uid that requested this page.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'path' => array(
+          'description' => 'Internal Drupal path.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => '',
+        ),
+        'full_path' => array(
+          'description' => 'Full request path',
+          'type' => 'text',
+          'size' => 'normal',
+        ),
+        'language' => array(
+          'description' => 'Language.',
+          'type' => 'varchar',
+          'length' => 255,
+          'default' => NULL,
+        ),
+        'request_time' => array(
+          'description' => 'UNIX timestamp of the request time',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'default' => 0,
+          'not null' => TRUE,
+        ),
+        'execution_time' => array(
+          'description' => 'Script execution time',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'default' => NULL,
+        ),
+        'ip_address' => array(
+          'decription' => 'Remote IP address',
+          'not null' => TRUE,
+          'type' => 'varchar',
+          'length' => '16',
+        ),
+      ),
+      'indexes' => array(
+        'execution_time' => array('execution_time'),
+        'request_time' => array('request_time'),
+        'path' => array('path'),
+        'ip_address' => array('ip_address'),
+        'language' => array('language'),
+      ),
+      'primary key' => array('pid'),
+    ),
+    'cyd_utils_page_info' => array(
+      'description' => 'A table to store additional informaion about Drupal page requests.',
+      'fields' => array(
+        'iid' => array(
+          'description' => 'Information unit identifier.',
+          'type' => 'serial',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'pid' => array(
+          'description' => 'The {cyd_utils_pages}.pid this message belongs to.',
+          'type' => 'int',
+          'not null' => TRUE,
+        ),
+        'context' => array(
+          'description' => 'When this information unit was collected (init, exit, etc.).',
+          'type' => 'varchar',
+          'length' => 32,
+          'not null' => TRUE,
+        ),
+        'type' => array(
+          'description' => 'Information type.',
+          'type' => 'varchar',
+          'length' => 32,
+          'not null' => TRUE,
+        ),
+        'data' => array(
+          'description' => 'The collected data.',
+          'type' => 'text',
+          'not null' => TRUE,
+        ),
+      ),
+      'indexes' => array(
+        'pid' => array('pid'),
+      ),
+      'primary key' => array('iid'),
+    ),
+    'cyd_utils_prints' => array(
+      'description' => 'Debug messages attached to page requests.',
+      'fields' => array(
+        'mid' => array(
+          'description' => 'Message identifier.',
+          'type' => 'serial',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'pid' => array(
+          'description' => 'The {cyd_utils_pages}.pid this message belongs to.',
+          'type' => 'int',
+          'not null' => TRUE,
+        ),
+        'title' => array(
+          'description' => 'Message title.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+          'default' => '',
+        ),
+        'data' => array(
+          'description' => 'Message data.',
+          'type' => 'text',
+          'not null' => TRUE,
+          'serialize' => TRUE,
+          'size' => 'big',
+        ),
+        'time' => array(
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'description' => 'Record timestamp.',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+      ),
+      'indexes' => array(
+        'pid' => array('pid'),
+      ),
+      'primary key' => array('mid'),
+    ),
+    'cyd_utils_logs' => array(
+      'description' => 'A table to store logged errors.',
+      'fields' => array(
+        'lid' => array(
+          'description' => 'Log identifier.',
+          'type' => 'serial',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'page' => array(
+          'description' => 'Requested page',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'default' => NULL,
+        ),
+        'source' => array(
+          'description' => 'Log source from hook_log_sources.',
+          'type' => 'varchar',
+          'length' => 32,
+          'not null' => TRUE,
+        ),
+        'type' => array(
+          'description' => 'Log type.',
+          'type' => 'varchar',
+          'length' => 32,
+          'default' => NULL,
+        ),
+        'subtype' => array(
+          'description' => 'Log subtype.',
+          'type' => 'varchar',
+          'length' => 32,
+          'default' => NULL,
+        ),
+        'is_warning' => array(
+          'description' => 'Log severity level. 1 if this is warning, 0 if this is error.',
+          'type' => 'int',
+          'size' => 'tiny',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'log_time' => array(
+          'description' => 'The Unix timestamp when the log was created.',
+          'type' => 'int',
+          'not null' => TRUE,
+          'default' => 0,
+        ),
+        'message' => array(
+          'description' => 'Log short description.',
+          'type' => 'text',
+          'not null' => TRUE,
+        ),
+        'data' => array(
+          'description' => 'Serialized additional log data.',
+          'type' => 'text',
+          'size' => 'big',
+          'serialize' => TRUE,
+          'not null' => TRUE,
+        ),
+      ),
+      'indexes' => array(
+        'page' => array('page'),
+        'source' => array('source'),
+        'type' => array('type'),
+        'subtype' => array('subtype'),
+        'log_time' => array('log_time'),
+        'is_warning' => array('is_warning'),
+      ),
+      'primary key' => array('lid'),
+    ),
+    'cyd_utils_page_tags' => array(
+      'description' => 'Page tags',
+      'fields' => array(
+        'pid' => array(
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'tag' => array(
+          'type'  => 'varchar',
+          'length' => 32,
+          'not null' => TRUE,
+        ),
+      ),
+      'indexes' => array(
+        'tag' => array('tag'),
+        'pid' => array('pid'),
+      ),
+      'primary key' => array('pid', 'tag'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_install().
+ */
+function cyd_utils_install() {
+  drupal_install_schema('cyd_utils');
+  db_query("UPDATE {system} SET weight=1000 WHERE name='cyd_utils'");
+  variable_set('cyd_utils_exclude_collect', 'admin/settings/cyd-utils
+admin/settings/cyd-utils/*
+js/admin_menu/cache/*');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function cyd_utils_uninstall() {
+  variable_del('cyd_utils_store_page_information');
+  variable_del('cyd_utils_store_time_information');
+  variable_del('cyd_utils_exclude_collect');
+  variable_del('cyd_utils_info_types');
+  drupal_uninstall_schema('cyd_utils');
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function cyd_utils_update_6101() {
+  // add new db fields
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('cyd_utils');
+  _drupal_initialize_schema('cyd_utils', $schema);
+  foreach (array('request_time', 'execution_time', 'ip_address') as  $field) {
+    db_add_field($ret, 'cyd_utils_pages', $field, $schema['cyd_utils_pages']['fields'][$field]);
+  }
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function cyd_utils_update_6102() {
+  // add indexes
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('cyd_utils');
+  _drupal_initialize_schema('cyd_utils', $schema);
+  $indexes = $schema['cyd_utils_pages']['indexes'];
+  foreach ($indexes as $index_name => $columns) {
+    db_add_index($ret, 'cyd_utils_pages', $index_name, $columns);
+  }
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function cyd_utils_update_6103() {
+  // add new fields
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('cyd_utils');
+  _drupal_initialize_schema('cyd_utils', $schema);
+  db_add_field($ret, 'cyd_utils_logs', 'page', $schema['cyd_utils_logs']['fields']['page']);
+  db_add_index($ret, 'cyd_utils_logs', 'page', array('page'));
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function cyd_utils_update_6104() {
+  // add new fields & update existing
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('cyd_utils');
+  _drupal_initialize_schema('cyd_utils', $schema);
+  db_change_field($ret, 'cyd_utils_logs', 'type', 'source', $schema['cyd_utils_logs']['fields']['source']);
+  db_add_field($ret, 'cyd_utils_logs', 'type', $schema['cyd_utils_logs']['fields']['type']);
+  db_add_field($ret, 'cyd_utils_logs', 'subtype', $schema['cyd_utils_logs']['fields']['subtype']);
+  $indexes = $schema['cyd_utils_logs']['indexes'];
+  unset($indexes['page']);
+  foreach ($indexes as $name => $fields) {
+    db_add_index($ret, 'cyd_utils_logs', $name, $fields)  ;
+  }
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function cyd_utils_update_6105() {
+  // add new table
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('cyd_utils');
+  _drupal_initialize_schema('cyd_utils', $schema);
+  db_create_table($ret, 'cyd_utils_page_tags', $schema['cyd_utils_page_tags']);
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function cyd_utils_update_6106() {
+  $ret = array();
+  // update size of "data" field
+  $schema = drupal_get_schema_unprocessed('cyd_utils');
+  _drupal_initialize_schema('cyd_utils', $schema);
+  db_change_field($ret, 'cyd_utils_logs', 'data', 'data', $schema['cyd_utils_logs']['fields']['data']);
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function cyd_utils_update_6107() {
+  $ret = array();
+  // add new indexes and fields
+  $schema = drupal_get_schema_unprocessed('cyd_utils');
+  _drupal_initialize_schema('cyd_utils', $schema);
+  db_add_index($ret, 'cyd_utils_pages', 'ip_address', $schema['cyd_utils_pages']['indexes']['ip_address']);
+  db_add_index($ret, 'cyd_utils_pages', 'language', $schema['cyd_utils_pages']['indexes']['language']);
+  db_add_field($ret, 'cyd_utils_pages', 'full_path', $schema['cyd_utils_pages']['fields']['full_path']);
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function cyd_utils_update_6108() {
+  $ret = array();
+  // add new index
+  $schema = drupal_get_schema_unprocessed('cyd_utils');
+  _drupal_initialize_schema('cyd_utils', $schema);
+  db_add_index($ret, 'cyd_utils_logs', 'is_warning', $schema['cyd_utils_logs']['indexes']['is_warning']);
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ */
+function cyd_utils_update_6109() {
+  $ret = array();
+  // change column name
+  $schema = drupal_get_schema_unprocessed('cyd_utils');
+  _drupal_initialize_schema('cyd_utils', $schema);
+  db_change_field($ret, 'cyd_utils_prints', 'text', 'data', $schema['cyd_utils_prints']['fields']['data']);
+  db_add_field($ret, 'cyd_utils_prints', 'time', $schema['cyd_utils_prints']['fields']['time']);
+  return $ret;
+}

@@ -1,0 +1,11 @@
+; $Id: vr_list.info,v 1.1.2.1 2010/01/21 18:40:25 jbomb Exp $
+name = VerticalResponse List Manager
+description = Generate and manage mailing lists.
+core = 6.x
+dependencies[] = vr
+; Information added by drupal.org packaging script on 2010-07-23
+version = "6.x-1.1"
+core = "6.x"
+project = "vr"
+datestamp = "1279893922"
+

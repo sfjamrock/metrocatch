@@ -1,0 +1,275 @@
+<?php
+/**
+ * @file
+ * Module install() and uninstall() process functions
+ */
+
+/**
+ * Implementation of hook_schema().
+ */
+function metrocatch_conversation_schema() {
+  return array(
+    'metrocatch_conversation_social_integration' => array(
+      'description' => 'Stores data about integration of user conversation with social nets (Facebook, Twitter).',
+      'fields' => array(
+        'uid' => array(
+          'description' => 'The {users}.uid',
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'ext_uid' => array(
+          'description' => 'The ID of the user in a social net.',
+          'type' => 'varchar',
+          'length' => 255,  // @TODO: length?
+          'not null' => TRUE,
+        ),
+        'provider' => array(
+          'description' => 'The social net ID (facebook or twitter).',
+          'type' => 'varchar',
+          'length' => 16,
+          'not null' => TRUE,
+        ),
+        'access_token' => array(
+          'description' => 'The user\'s oAuth access token in this social net.',
+          'type' => 'varchar',
+          'length' => 128,
+          'not null' => TRUE,
+        ),
+        'token_secret' => array(
+          'description' => 'Stores access token secret. Is used only for Twitter tokens, because Facebook provides bearer tokens.',
+          'type' => 'varchar',
+          'length' => 128,
+        ),
+        'last_update' => array(
+          'description' => 'The UNIX timestamp of the last imported Facebook post or the ID of the last imported twitter post.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => TRUE,
+        ),
+      ),
+      'primary key' => array('uid', 'provider'),
+      'indexes' => array(
+        'ext_uid' => array('ext_uid', 'provider'),
+        'provider' => array('provider'),
+      ),
+    ),
+    'metrocatch_conversation_facebook_queue' => array(
+      'description' => 'Stores Real-time updates data received from Facebook.',
+      'fields' => array(
+        'qid' => array(
+          'description' => 'The primary identifier for a queue.',
+          'type' => 'serial',
+          'unsigned' => TRUE,
+          'not null' => TRUE,
+        ),
+        'data' => array(
+          'description' => 'Serialized data received from Facebook.',
+          'type' => 'text',
+          'not null' => TRUE,
+          'size' => 'big',
+          'serialize' => TRUE,
+        ),
+      ),
+      'primary key' => array('qid'),
+    ),
+    'metrocatch_conversation_twitter_queue' => array(
+        'description' => 'Stores queue of users for whom we should check updates on Twitter.',
+        'fields' => array(
+          'uid' => array(
+            'description' => 'The {users}.uid',
+            'type' => 'int',
+            'unsigned' => TRUE,
+            'not null' => TRUE,
+          ),
+          'last_update' => array(
+            'description' => 'The UNIX timestamp of when we have last checked updates for this UID.',
+            'type' => 'int',
+            'unsigned' => TRUE,
+            'not null' => TRUE,
+          ),
+        ),
+        'primary key' => array('uid'),
+        'indexes' => array(
+          'last_update' => array('last_update'),
+        ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function metrocatch_conversation_unistall() {
+  // delete module's variables
+  db_query("DELETE FROM {variables} WHERE name LIKE('%s%%')", 'metrocatch_conversation_');
+  cache_clear_all('variables', 'cache');
+}
+
+/**
+ * Implementation of hook_install().
+ */
+function metrocatch_conversation_install() {
+  drupal_install_schema('metrocatch_conversation');
+  _metrocatch_conversation_add_subscription();
+  // set comment settings for out content type
+  variable_set('comment_conversation_entry', '2');
+  variable_set('comment_default_mode_conversation_entry', '4');
+  variable_set('comment_default_order_conversation_entry', '1');
+  variable_set('comment_default_per_page_conversation_entry', '50');
+  variable_set('comment_controls_conversation_entry', '3');
+  variable_set('comment_anonymous_conversation_entry', 0);
+  variable_set('comment_subject_field_conversation_entry', '0');
+  variable_set('comment_preview_conversation_entry', '0');
+  variable_set('comment_form_location_conversation_entry', '1');
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Introduces new DB table.
+ */
+function metrocatch_conversation_update_6101() {
+  return drupal_install_schema('metrocatch_conversation');
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Subscribe Facebook application on Real-time updates.
+ */
+function metrocatch_conversation_update_6103() {
+  _metrocatch_conversation_add_subscription();
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Introduces 'metrocatch_conversation_facebook_queue' table, remove 'enabled' field, rename 'last_update_id' field.
+ */
+function metrocatch_conversation_update_6104() {
+  $ret = array();
+
+  $schema = drupal_get_schema_unprocessed('metrocatch_conversation', 'metrocatch_conversation_facebook_queue');
+  db_create_table($ret, 'metrocatch_conversation_facebook_queue', $schema);
+
+  $schema = drupal_get_schema_unprocessed('metrocatch_conversation', 'metrocatch_conversation_social_integration');
+  db_add_field($ret, 'metrocatch_conversation_social_integration', 'last_update', $schema['fields']['last_update']);
+  db_drop_field($ret, 'metrocatch_conversation_social_integration', 'enabled');
+  db_drop_field($ret, 'metrocatch_conversation_social_integration', 'last_update_id');
+  db_drop_index($ret, 'metrocatch_conversation_social_integration', 'enabled_provider');
+  db_add_index($ret, 'metrocatch_conversation_social_integration', 'ext_uid', array('ext_uid', 'provider'));
+  db_add_index($ret, 'metrocatch_conversation_social_integration', 'provider', array('provider'));
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Truncates 'metrocatch_conversation_social_integration' table.
+ */
+function metrocatch_conversation_update_6105() {
+  $ret = array();
+  $ret[] = update_sql("TRUNCATE {metrocatch_conversation_social_integration}");
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Updates application subscription.
+ */
+function metrocatch_conversation_update_6106() {
+  $ret = array();
+  $ret[] = _metrocatch_conversation_remove_subscription();
+  $ret[] = _metrocatch_conversation_add_subscription();
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Increase access_token field length.
+ */
+function metrocatch_conversation_update_6107() {
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('metrocatch_conversation', 'metrocatch_conversation_social_integration');
+  db_change_field($ret, 'metrocatch_conversation_social_integration', 'access_token', 'access_token', $schema['fields']['access_token']);
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Introduces 'metrocatch_conversation_twitter_queue' table.
+ */
+function metrocatch_conversation_update_6108() {
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('metrocatch_conversation', 'metrocatch_conversation_twitter_queue');
+  db_create_table($ret, 'metrocatch_conversation_twitter_queue', $schema);
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Notify administrator about rebuilding content permissions.
+ */
+function metrocatch_conversation_update_6109() {
+  node_access_needs_rebuild(TRUE);
+  return array();
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Removes dpuble posts.
+ */
+function metrocatch_conversation_update_6200() {
+  for ($nid = 120; $nid <= 2700; $nid++) {
+    node_delete($nid);
+  }
+  return array();
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Introduces 'token_secret' field in the 'metrocatch_conversation_social_integration' database table.
+ */
+function metrocatch_conversation_update_6201() {
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('metrocatch_conversation', 'metrocatch_conversation_social_integration');
+  db_add_field($ret, 'metrocatch_conversation_social_integration', 'token_secret', $schema['fields']['token_secret']);
+  return $ret;
+}
+
+/**
+ * Implementation of hook_update_N().
+ *
+ * Increase length of 'last_update' field.
+ */
+function metrocatch_conversation_update_6202() {
+  $ret = array();
+  $schema = drupal_get_schema_unprocessed('metrocatch_conversation', 'metrocatch_conversation_social_integration');
+  db_change_field($ret, 'metrocatch_conversation_social_integration', 'last_update', 'last_update', $schema['fields']['last_update']);
+  return $ret;
+}
+
+/**
+ * Removes Facebook application subscribtion.
+ */
+function _metrocatch_conversation_remove_subscription() {
+  $facebook = metrocatch_conversation_facebook_init();
+  $params = array(
+    'verify_token' => $facebook->getAppSecret(),
+    'access_token' => $facebook->getAppId() .'|'. $facebook->getAppSecret()
+  );
+  try {
+    $ret = $facebook->api($facebook->getAppId() . '/subscriptions', 'DELETE', $params);
+  }
+  catch (FacebookApiException $e) {
+    drupal_set_message($e->getMessage(), 'error');
+  }
+  return array();
+}

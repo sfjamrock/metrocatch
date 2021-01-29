@@ -1,0 +1,177 @@
+/**
+ * @file
+ * Tabs Styling
+ *
+ * Adds styles for the primary and secondary tabs.
+ *
+ * Compare this with default CSS found in the system module's stylesheet (a copy
+ * of which is in drupal6-reference.css, line 510.)
+ */
+
+
+div.tabs {
+  position: absolute;
+  top: 118px;
+}
+
+
+ul.primary {
+  margin: 0;
+  list-style: none;
+  white-space: nowrap;
+  line-height: normal;
+  border: none;
+  padding: 0;
+}
+
+ul.primary li {
+  float: left; /* LTR */
+  margin: 0;
+  padding: 0;
+}
+
+ul.primary li a {
+  font-size: 17px;
+  text-decoration: none;
+  color: #8c8c8c;
+  background: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+ul.primary li a .tab {
+  display: block;
+  padding: 10px 12px 6px; 
+  -moz-box-shadow: 0 -1px 3px rgba(27, 23, 24, 0.21);
+  -webkit-box-shadow: 0 -1px 3px rgba(27, 23, 24, 0.21);
+  box-shadow: 0 -1px 3px rgba(27, 23, 24, 0.21);
+  background: #131213 url('../images/fallbacks/tab-bg-fallback.png') top left repeat-x;
+  background: -o-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -moz-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -webkit-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -ms-linear-gradient(top center, #4a4a4a 23%, #121112 62%);
+  background: -webkit-gradient(linear, left top, left bottom, from(#4a4a4a), to(#121112));
+  background: linear-gradient(center, #4a4a4a 23%, #121112 62%);
+  border: 1px solid #fff;
+  border-bottom: none;
+  -moz-border-radius: 4px 4px 0 0;
+  -webkit-border-radius: 4px 4px 0 0;
+  -o-border-radius: 4px 4px 0 0;
+  border-radius: 4px 4px 0 0;
+}
+
+ul.primary li a:hover,
+ul.primary li a:focus {
+  color: #fff;
+  background: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+
+ul.primary li.active a,
+ul.primary li.active a:hover,
+ul.primary li.active a:focus {
+  color: #fff;
+  background: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  font-weight: bold;
+}
+
+ul.primary li a:hover .tab,
+ul.primary li a:focus .tab {
+  background: #5e47a3 url('../images/fallbacks/tab-hover-bg-fallback.png') top left repeat-x;
+}
+
+ul.primary li.active a .tab,
+ul.primary li.active a:hover .tab,
+ul.primary li.active a:focus .tab {
+  background: #5e47a3 url('../images/fallbacks/tab-active-bg-fallback.png') top left repeat-x;
+}
+
+ul.primary li.active a .tab,
+ul.primary li a:hover .tab,
+ul.primary li a:focus .tab,
+ul.primary li.active a:hover .tab,
+ul.primary li.active a:focus .tab {
+  border-width: 0;
+  background: linear-gradient(center, #9680dc 23%, #5e47a3 62%);
+  background: -o-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -moz-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -webkit-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -ms-linear-gradient(top center, #9680dc 23%, #5e47a3 62%);
+  background: -webkit-gradient(linear, left top, left bottom, from(#9680dc), to(#5e47a3));
+  border: 1px solid #fff;
+  border-bottom: none;
+  -moz-border-radius: 4px 4px 0 0;
+  -webkit-border-radius: 4px 4px 0 0;
+  -o-border-radius: 4px 4px 0 0;
+  border-radius: 4px 4px 0 0;
+}
+
+ul.primary li.active a .tab,
+ul.primary li.active a:hover .tab,
+ul.primary li.active a:focus .tab {
+  padding: 14px 12px 10px; 
+  margin-top: -8px;
+}
+
+ul.secondary {
+  margin: 0;
+  padding: 0 0 0 5px; /* LTR */
+  border-bottom: 1px solid #c0c0c0;
+  list-style: none;
+  white-space: nowrap;
+  background: url(../images/tab-secondary-bg.png) repeat-x left bottom;
+  position: relative;
+  top: -5px;
+  z-index: 3;
+}
+
+ul.secondary li {
+  float: left; /* LTR */
+  margin: 0 5px 0 0;
+  padding: 5px 0;
+  border-right: none; /* LTR */
+}
+
+ul.secondary a {
+  display: block;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #c0c0c0;
+  text-decoration: none;
+  color: #777;
+  background: url(../images/tab-secondary.png) repeat-x left -56px;
+}
+
+ul.secondary a .tab {
+  display: block;
+  height: 18px; /* 24px (parent) - 6px (padding) */
+  margin: 0;
+  padding: 3px 8px;
+  line-height: 18px;
+}
+
+ul.secondary a:hover,
+ul.secondary a:focus {
+  background: url(../images/tab-secondary.png) repeat-x left bottom;
+}
+
+ul.secondary a.active,
+ul.secondary a.active:hover,
+ul.secondary a.active:focus {
+  border: 1px solid #c0c0c0;
+  color: #000;
+  background: url(../images/tab-secondary.png) repeat-x left top;
+}
+
+div.tabs {
+  position: absolute;
+  right: 20px;
+}

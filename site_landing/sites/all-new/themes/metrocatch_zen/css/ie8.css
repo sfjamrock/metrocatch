@@ -1,0 +1,9 @@
+
+div.tabs {
+  top: 119px;
+}
+
+input[type="text"],
+input[type="password"] {
+  border: 1px solid #d9d9d9;
+}

@@ -1,0 +1,332 @@
+div.textfield-placeholder {
+  color: gray;
+}
+
+.metrocatch-uc-purchase-history .contact-us-about-transaction {
+	float: right;
+	clear: right;
+}
+
+.metrocatch-uc-purchase-history .metrocatch-purahses-connections-left {
+  float: right;
+}
+
+.metrocatch-uc-purchase-history div.item-list {
+  clear: both;
+}
+
+#metrocatch-custom-redeem-points-form {
+  width: 640px;
+}
+
+.user-profile-metrocatch-promo-codes-wrapper ul {
+  margin: 0px;
+}
+
+.metrocatch-notifications-coupon-status-active,
+.metrocatch-notifications-coupon-status-used {
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.metrocatch-notifications-coupon-status-used {
+  color: #878686;
+}
+
+.metrocatch-ad-left {
+  border: 1px solid black;
+  border-radius: 4px;
+  -moz-border-radius: 4px;
+  -o-border-radius: 4px;
+  -webkit-border-radius: 4px;
+  background: grey;
+  width: 240px;
+  height: 240px;
+  margin: 6px;
+}
+
+body.front #block-menu-menu-metromenu {
+  height: 391px;
+}
+
+/**
+ * "Purchase connections" form.
+ */
+
+#metrocatch-connect-connect-form {
+  width: 575px;
+}
+
+#metrocatch-connect-connect-form.metrocatch-purchase-form {
+  width: 640px;
+}
+
+.metrocatch-purchase-form * {
+  color: #090909;
+  font-size: 16px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.metrocatch-purchase-form .form-radios > .form-item {
+  float: left;
+  margin-right: 20px;
+}
+
+.metrocatch-purchase-form .form-radios {
+  height: 30px;
+  clear: both;
+}
+
+.metrocatch-connections-left {
+  clear: both;
+  padding-top: 1px;
+}
+
+.metrocatch-connections-left label {
+  float: left;
+  margin-right: 6px;
+}
+
+.metrocatch-logged-in a {
+  text-decoration: underline !important;
+}
+
+.form-item label,
+.metrocatch-purchase-form .form-item label {
+  font-size: 16px;
+  line-height: 20px;
+  color: #404040;
+}
+
+.metrocatch-purchase-form .uc-price,
+.metrocatch-purchase-form .form-item label {
+  font-size: 15px;
+  color: #404040;
+}
+
+.metrocatch-purchase-form .payment-information label {
+  font-size: 26px;
+  font-weight: bold;
+  clear: both;
+  line-height: 26px;
+}
+
+.metrocatch-purchase-form .payment-information-container .form-item {
+  margin: 0px;
+  padding: 0px;
+}
+
+.metrocatch-purchase-form .payment-information-container h3 {
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+
+
+.metrocatch-purchase-form .pay-with {
+  line-height: 14px;
+  font-size: 14px;
+}
+
+.metrocatch-purchase-form #edit-promo-code {
+  width: 625px;
+}
+
+.metrocatch-purchase-form #edit-first-name-wrapper input,
+.metrocatch-purchase-form #edit-last-name-wrapper input,
+.metrocatch-purchase-form #edit-street-address-wrapper input,
+.metrocatch-purchase-form #edit-street-address2-wrapper input {
+  width: 297px;
+}
+
+.metrocatch-purchase-form #edit-first-name-wrapper,
+.metrocatch-purchase-form #edit-last-name-wrapper,
+.metrocatch-purchase-form #edit-street-address-wrapper,
+.metrocatch-purchase-form #edit-street-address2-wrapper {
+  float: left;
+  width: 307px;
+  margin-right: 20px;
+}
+
+.metrocatch-purchase-form #edit-last-name-wrapper,
+.metrocatch-purchase-form #edit-street-address2-wrapper {
+  margin-right: 0px;
+}
+
+.metrocatch-purchase-form #edit-city-wrapper {
+  clear: both;
+  float: left;
+  width: 240px;
+  margin-right: 10px;
+}
+
+.metrocatch-purchase-form #edit-city-wrapper input {
+  width: 220px;
+}
+
+.metrocatch-purchase-form #edit-state-wrapper {
+  width: 206px;
+  float: left;
+}
+
+.metrocatch-purchase-form input[type="textfield"] {
+  height: 30px;
+}
+
+.metrocatch-purchase-form select {
+  padding: 2px 0;
+  height: 30px;
+}
+
+
+.metrocatch-purchase-form #edit-state-wrapper select {
+  width: 190px;
+}
+
+.metrocatch-purchase-form #edit-zip-wrapper {
+  float: left;
+  width: 184px;
+}
+
+.metrocatch-purchase-form #edit-zip-wrapper input {
+  width: 167px;
+}
+
+#payment-method-select {
+  clear: both;
+}
+
+.metrocatch-purchase-form #edit-cc-info-cc-number-wrapper {
+  width: 254px;
+  margin-right: 20px;
+  float: left;
+}
+.metrocatch-purchase-form #edit-cc-info-cc-number-wrapper input {
+  width: 244px;
+}
+
+.metrocatch-purchase-form #edit-cc-info-cc-exp-month-wrapper {
+  float: left;
+  width: 136px;
+}
+
+.metrocatch-purchase-form #edit-cc-info-cc-exp-month-wrapper select {
+  width: 126px;
+}
+
+.metrocatch-purchase-form #edit-cc-info-cc-exp-year-wrapper {
+  float: left;
+  width: 90px;
+}
+
+.metrocatch-purchase-form #edit-cc-info-cc-exp-year-wrapper select {
+  width: 80px;
+  margin-top: 23px;
+}
+
+.metrocatch-purchase-form #edit-cc-info-cc-cvv-wrapper {
+  float: left;
+  width: 140px;
+}
+
+.metrocatch-purchase-form #edit-cc-info-cc-cvv-wrapper input {
+  width: 121px;
+}
+
+.metrocatch-purchase-form select {
+  color: #404040;
+}
+
+textarea {
+  -webkit-box-shadow: inset 1px 1px 5px rgba(0, 0, 0, 0.25);
+  -moz-box-shadow: inset 1px 1px 5px rgba(0, 0, 0, 0.25);
+  box-shadow: inset 1px 1px 5px rgba(0, 0, 0, 0.25);
+  border: none;
+}
+
+textarea:focus {
+  -moz-box-shadow: 0 0 7px rgba(95, 64, 170, 0.75);
+  -webkit-box-shadow: 0 0 7px rgba(95, 64, 170, 0.75);
+  box-shadow: 0 0 7px rgba(95, 64, 170, 0.75);
+  outline: 0;
+}
+
+html .popup-forms-dialog-wrapper .ui-widget-content .ui-icon, .popup-forms-dialog-wrapper .ui-widget-header .ui-icon {
+  background-image: url('../images/ui-icons_ffffff_256x240.png');
+}
+
+html .popup-forms-dialog-wrapper .ui-state-hover,.popup-forms-dialog-wrapper .ui-widget-content .ui-state-hover,.popup-forms-dialog-wrapper .ui-state-focus,.popup-forms-dialog-wrapper .ui-widget-content .ui-state-focus {
+  background: none;
+  border:1px solid #fff;
+  color:#212121;
+  font-weight:400;
+  outline:none;
+}
+
+html .popup-forms-dialog-wrapper .ui-dialog-titlebar > span {
+  margin: 5px 3px 5px 2px;
+}
+
+html .ui-dialog .ui-dialog-titlebar-close,
+html .popup-forms-dialog-wrapper .ui-dialog .ui-dialog-titlebar-close {
+  top: 11px;
+}
+
+#uc-paypal-wps-form {
+  position: absolute;
+  left: 100px;
+  bottom: 15px;
+}
+
+#metrocatch-connect-purchase-connections-form  #edit-promo-code-wrapper,
+#metrocatch-connect-purchase-connections-form  #edit-promo-code-wrapper input {
+  width: 200px;
+}
+
+#metrocatch-connect-connect-form textarea[name="message"] {
+  display: block !important;
+  width: 100% !important;
+  margin: 0px;
+  padding: 0px;
+  height: 150px;
+}
+
+#metrocatch-connect-connect-form #edit-message-wrapper .metrocatch-connect-positive-number {
+  color: green;
+}
+
+#metrocatch-connect-connect-form #edit-message-wrapper .metrocatch-connect-negative-number {
+  color: red;
+}
+
+#metrocatch-profile-complete-form .field-privacy-field_profile_hometown-wrapper,
+#metrocatch-profile-complete-form .field-privacy-field_profile_current_city-wrapper {
+  position: relative;
+}
+
+#metrocatch-profile-complete-form #edit-field-profile-state-value-wrapper {
+  bottom: 3px;
+  left: 167px;
+  position: absolute;
+}
+
+#metrocatch-profile-complete-form #edit-field-profile-neighborhood-state-value-wrapper {
+  bottom: 3px;
+  left: 146px;
+  position: absolute;
+}
+
+#metrocatch-profile-complete-form #edit-field-profile-neighborhood-state-value-wrapper select {
+  width: 142px !important;
+}
+
+#metrocatch-profile-complete-form #edit-field-profile-neighborhood-state-value-wrapper label,
+#metrocatch-profile-complete-form #edit-field-profile-state-value-wrapper label {
+  display: none;
+}
+
+#metrocatch-profile-complete-form #edit-field-profile-neighborhood-value-wrapper {
+  bottom: 3px;
+  left: 296px;
+  position: absolute;
+}
+

@@ -1,0 +1,4 @@
+RewriteEngine on
+RewriteCond %{HTTP_HOST} ^beta\.metrocatch\.com$ [OR]
+RewriteCond %{HTTP_HOST} ^www\.beta\.metrocatch\.com$
+RewriteRule ^(.*)$ "http\:\/\/www.metrocatch.com/$1" [L,R=301]

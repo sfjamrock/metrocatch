@@ -1,0 +1,12 @@
+<?php
+/**
+ * @file
+ * DB consistency module uninstallation.
+ */
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function db_consistency_uninstall() {
+  variable_del('db_consistency_result');
+}

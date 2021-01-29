@@ -1,0 +1,17 @@
+<?php
+/**
+ * @file
+ * mailcreators.install
+ */
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function mailcreators_uninstall() {
+  // Drupal 6 has no biult-in hook_modules_uninstalled() so call it from your module as follows:
+  // module_invoke_all('modules_uninstalled', array('yourmodulename')).
+  $creators = mailcreators_get_creators();
+  foreach ($creators as $name => $v) {
+    mailcreators_get_creator($name)->reset();
+  }
+}

@@ -1,0 +1,9 @@
+name = "Metromail"
+description = "MetroMail system"
+core = "6.x"
+version = "6.x-1.2"
+package = "MetroCatch"
+project = "metromail"
+dependencies[] = "flag"
+dependencies[] = mailcreators
+features[flag][] = "metromail_notify_flag"

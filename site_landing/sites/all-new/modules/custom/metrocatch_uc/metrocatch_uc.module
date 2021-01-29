@@ -1,0 +1,901 @@
+<?php
+/**
+ * @file
+ * General function and hook implementations
+ */
+
+/**
+ * @name hooks Hook implementations.
+ * @{
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function metrocatch_uc_menu() {
+  return array(
+    'admin/metrocatch/metrocatch_uc' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'Metrocatch UC',
+      'description' => 'Configure Metrocatch UC (settings of purchase history page).',
+      'access arguments' => array('administer metrocatch uc'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('metrocatch_uc_settings_form'),
+      'file' => 'metrocatch_uc.pages.inc',
+    ),
+    'user/%/purchase-history' => array(
+      'type' => MENU_LOCAL_TASK,
+      'title' => 'Purchase History',
+      'access callback' => 'metrocatch_uc_purchase_history_access',
+      'access arguments' => array(1),
+      'page callback' => 'metrocatch_uc_purchase_history',
+      'page arguments' => array(1),
+      'file' => 'metrocatch_uc.pages.inc',
+    ),
+    'purchase-history' => array(
+      'type' => MENU_NORMAL_ITEM,
+      'title' => 'Purchase History',
+      'access callback' => 'user_is_logged_in',
+      'page callback' => 'metrocatch_uc_purchase_history',
+      'file' => 'metrocatch_uc.pages.inc',
+      'menu_name' => 'primary-links',
+      'weight' => 10,
+    ),
+    'ajax-metrocatch-uc-refresh-payment-method' => array(
+      'title' => 'ajax callback',
+      'type' => MENU_CALLBACK,
+      'access callback' => TRUE,
+      'page callback' => 'metrocatch_uc_ajax_refresh_payment_method',
+      'file' => 'metrocatch_uc.pages.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_menu_alter().
+ */
+function metrocatch_uc_menu_alter(&$items) {
+  unset($items['cart']);
+  unset($items['cart/checkout']);
+  unset($items['user/%user/orders']);
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function metrocatch_uc_perm() {
+  return array('administer metrocatch uc');
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function metrocatch_uc_theme() {
+  return array(
+    'metrocatch_uc_payment_information' => array(
+      'arguments' => array(),
+    ),
+    'metrocatch_uc_order_review' => array(
+      'arguments' => array('order' => NULL),
+      'template' => 'metrocatch-uc-order-review',
+    ),
+    'metrocatch_uc_billing_address' => array(
+      'arguments' => array('order' => NULL),
+    ),
+    'metrocatch_uc_user_purchase' => array(
+      'arguments' => array('order' => NULL),
+      'template' => 'metrocatch-uc-user-purchase',
+    ),
+    'metrocatch_uc_purchase_history' => array(
+      'arguments' => array('orders' => NULL, 'account' => NULL),
+      'template' => 'metrocatch-uc-purchase-history',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter().
+ */
+function metrocatch_uc_form_uc_paypal_wps_form_alter(&$form, $form_state) {
+  global $_metrocatch_uc_paypal_redirect;
+  $form['submit']['#value'] = t('Purchase');
+  $order = end($form['#parameters']);
+  $form['cancel_return']['#value'] = url($form['cancel_return']['#value'], array('query' => array('destination' => $_metrocatch_uc_paypal_redirect), 'absolute' => TRUE));
+  $form['return']['#value'] = url($form['return']['#value'], array('query' => array('destination' => $_metrocatch_uc_paypal_redirect), 'absolute' => TRUE));
+}
+
+/**
+ * Implementation of hook_payment_method().
+ */
+function metrocatch_uc_payment_method() {
+  $methods[] = array(
+    'id' => 'metrocatch_uc_free_order',
+    'name' => t('Free order'),
+    'title' => t('Free order - payment not necessary.'),
+    'desc' => t('Allow customers with $0 order totals to checkout without paying.'),
+    'callback' => 'metrocatch_uc_payment_method_free_order',
+    'checkout' => TRUE,
+    'no_gateway' => TRUE,
+    'weight' => 10,
+  );
+  return $methods;
+}
+
+/**
+ * Payment method callback.
+ */
+function metrocatch_uc_payment_method_free_order($op, &$arg1, $silent = FALSE) {
+  if ($op == 'cart-details') {
+    return t('Continue with checkout to complete your free order.');
+  }
+}
+
+/**
+ * Implementation of hook_order().
+ */
+function metrocatch_uc_order($op, &$arg1, $arg2) {
+  // call some "payment receoved" operation when order status changed to "payment_received"
+  if (('save' == $op && $arg1->order_status == 'payment_received' && $arg1->uid) || ('update' == $op && $arg2 == 'payment_received' && $arg1->uid)) {
+    if (!$arg1->data['metrocatch_uc_payment_processed']) {
+      $order = $arg1;
+      if (isset($order->data['metrocatch_callback_file'])) {
+        require_once($order->data['metrocatch_callback_file']);
+      }
+      if (isset($order->data['metrocatch_uc_purchase_callback']) && function_exists($order->data['metrocatch_uc_purchase_callback'])) {
+        $order->data['metrocatch_uc_purchase_callback']('purchased', $arg1);
+        module_invoke_all('metrocatch_product_purchased', $arg1);
+      }
+      $arg1->data['metrocatch_uc_payment_processed'] = TRUE;
+      // update order data
+      db_query("UPDATE {uc_orders} SET data='%s' WHERE order_id=%d", serialize($arg1->data), $arg1->order_id);
+    }
+  }
+  global $cc_payment_process;
+  if ('load' == $op && isset($cc_payment_process) && !empty($cc_payment_process)) {
+    $arg1->payment_details = $cc_payment_process;
+    unset($cc_payment_process);
+  }
+  if ('submit' == $op && $arg1->payment_method == 'metrocatch_uc_free_order') {
+    uc_payment_enter($arg1->order_id, 'metrocatch_uc_free_order', 0, 0, NULL, t('Checkout completed for a free order.'));
+  }
+}
+
+/**
+ * Implementation of hook_date_format_types().
+ */
+function metrocatch_uc_date_format_types() {
+  return array(
+    'metrocatch_uc_transaction_date' => t('Metrocatch UC Tranasaction date'),
+  );
+}
+
+/**
+ * @} End of  name hooks.
+ */
+
+/**
+ * @name api API implementations.
+ * @{
+ */
+
+/**
+ * "Purchase form" callback - main form of the module
+ *
+ * @param array $settings
+ *   array of purchase settings, possible keys are:
+ *   - 'product_callback': (required) callback function name. This function must have prototype:
+ *     my_func($op, $arg1 = NULL, $arg2 = NULL)
+ *     function arguments:
+ *     - $op: one of next values 'purchased', 'products'
+ *     - $arg1: entire purchase form ($op == 'products') or order object ($op == 'purchased')
+ *     - $arg2: form state or NULL
+ *   - 'promo_codes': boolean value (default - FALSE) - allow or not user to use promo code
+ *   - 'file': (optional) file to be included before form rebuild
+ *     (this needs if parent form not in .module file).
+ */
+function metrocatch_uc_purchase_form(&$form_state, $settings) {
+  if (!isset($form_state['storage']['step'])) {
+    $form_state['storage']['step'] = 'fill_form';
+  }
+  switch ($form_state['storage']['step']) {
+    case 'fill_form';
+      if (isset($form_state['storage']['old_values'])) {
+        $form_state['values'] = $form_state['storage']['old_values'];
+        unset($form_state['storage']['old_values']);
+      }
+      // store product callback
+      $form_state['storage']['products_callback'] = $settings['product_callback'];
+      // and return initial form
+      $form = array();
+      if (isset($settings['promo_codes']) && $settings['promo_codes'] == TRUE) {
+        $form += array(
+          'promo_code' => array(
+            '#type' => 'textfield',
+            '#title' => t('Have a promo code?'),
+            '#default_value' => isset($form_state['values']['promo_code']) ? $form_state['values']['promo_code'] : '',
+          ),
+        );
+      }
+      if (isset($settings['file'])) {
+        $form_state['storage']['file'] = $settings['file'];
+      }
+      $form += array(
+        'payment_information' => array(
+          '#prefix' => '<div class="payment-information-container">',
+          '#value' => '<h3>' . t('Payment Information') . '</h3>',
+          '#type' => 'item',
+        ),
+        'pay_with' => array(
+          '#type' => 'item',
+          '#value' => theme('metrocatch_uc_payment_information'),
+          '#title' => t('Pay with'),
+          '#suffix' => '</div>',
+        ),
+        'first_name' => array(
+          '#type' => 'textfield',
+          '#title' => t('Cardholder First Name'),
+          '#required' => TRUE,
+          '#default_value' => isset($form_state['values']['first_name']) ? $form_state['values']['first_name'] : '',
+        ),
+        'last_name' => array(
+          '#type' => 'textfield',
+          '#title' => t('Cardholder Last Name'),
+          '#required' => TRUE,
+          '#default_value' => isset($form_state['values']['last_name']) ? $form_state['values']['last_name'] : '',
+        ),
+        'street_address' => array(
+          '#type' => 'textfield',
+          '#title' => t('Street Address'),
+          '#required' => TRUE,
+          '#default_value' => isset($form_state['values']['street_address']) ? $form_state['values']['street_address'] : '',
+        ),
+        'street_address2' => array(
+          '#type' => 'textfield',
+          '#title' => t('Street Address 2'),
+          '#required' => FALSE,
+          '#default_value' => isset($form_state['values']['street_address2']) ? $form_state['values']['street_address2'] : '',
+        ),
+        // this field temporary removed
+//        'remember_values' => array(
+//          '#type' => 'checkbox',
+//          '#title' => t('Remember for future purchases'),
+//          '#default_value' => isset($form_state['values']['remember_values']) ? $form_state['values']['remember_values'] : TRUE,
+//        ),
+        'city' => array(
+          '#type' => 'textfield',
+          '#title' => t('City'),
+          '#required' => FALSE,
+          '#default_value' => isset($form_state['values']['city']) ? $form_state['values']['city'] : '',
+        ),
+        'state' => uc_zone_select(t('State'), isset($form_state['state']) ? $form_state['state'] : NULL, NULL, NULL, $display = 'name', FALSE),
+        'zip' => array(
+          '#type' => 'textfield',
+          '#title' => t('Zip Code'),
+          '#required' => FALSE,
+          '#default_value' => isset($form_state['values']['zip']) ? $form_state['values']['zip'] : '',
+        ),
+        'payment_method' => array(
+          '#type' => 'radios',
+          '#options' => array('credit' => t('Credit Card'), 'paypal' => t('Paypal')),
+          '#default_value' => isset($form_state['values']['payment_method']) ? $form_state['values']['payment_method'] : 'credit',
+          '#ahah' => array(
+            'path' => 'ajax-metrocatch-uc-refresh-payment-method',
+            'wrapper' => 'payment-method-select',
+            'method' => 'replace',
+            'effect' => 'fade',
+          ),
+        ),
+        '#after_build' => array('metrocatch_uc_unset_wrong_ajax_action'),
+      );
+      if ($form['payment_method']['#default_value'] == 'credit') {
+        // CreditCard payment method
+        $form['payment'] = array(
+          "#prefix" => '<div id="payment-method-select">',
+          "#suffix" => '</div>',
+          'cc_info' => array(
+            '#tree' => TRUE,
+            'cc_number' => array(
+              '#type' => 'textfield',
+              '#title' => t('Card Number'),
+              '#required' => TRUE,
+              '#default_value' => isset($form_state['values']['cc_info']['cc_number']) ? $form_state['values']['cc_info']['cc_number'] : '',
+              '#attributes' => array('autocomplete' => 'off'),
+            ),
+            'cc_exp_month' => uc_select_month(t('Expiration'), isset($form_state['values']['cc_info']['cc_exp_month']) ? $form_state['values']['cc_info']['cc_exp_month'] : NULL),
+            'cc_exp_year' => uc_select_year('', isset($form_state['values']['cc_info']['cc_exp_year']) ? $form_state['values']['cc_info']['cc_exp_year'] : NULL),
+            'cc_cvv' => array(
+              '#type' => 'textfield',
+              '#title' => t('Security Code'),
+              '#default_value' => '',
+              '#required' => TRUE,
+              '#attributes' => array('autocomplete' => 'off'),
+              '#size' => 4,
+              '#maxlength' => 4,
+            ),
+          ),
+        );
+      }
+      else {
+        // PayPal payment method
+        $form['payment'] = array(
+          '#type' => 'markup',
+          '#value' => '<div id="payment-method-select"></div>',
+        );
+      }
+      $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Review Order'),
+        '#submit' => array('metrocatch_uc_purchase_form_purchase_submit'),
+        '#validate' => array('metrocatch_uc_purchase_form_purchase_validate'),
+        '#weigth' => 100,
+      );
+      return $form;
+      break;
+    case 'review':
+      $form =  array(
+        'info' => array(
+          '#type' => 'markup',
+          '#value' => theme('metrocatch_uc_order_review', $form_state['storage']['order']),
+        ),
+        'back' => array(
+          '#type' => 'submit',
+          '#value' => t('Back'),
+          '#name' => 'back',
+          '#submit' => array('metrocatch_uc_purchase_form_purchase_submit'),
+        ),
+        'submit' => array(
+          '#type' => 'submit',
+          '#value' => t('Purchase'),
+          '#name' => 'submit',
+          '#submit' => array('metrocatch_uc_purchase_form_purchase_submit'),
+          '#validate' => array('metrocatch_uc_purchase_form_purchase_validate'),
+        ),
+        '#after_build' => array('metrocatch_uc_unset_wrong_ajax_action'),
+      );
+      if ($form_state['storage']['old_values']['payment_method'] == 'paypal' && !isset($form_state['storage']['metrocatch_uc_free_order'])) {
+        // Save final destination in global variable so that it will be available in
+        // metrocatch_uc_form_uc_paypal_wps_form_alter().
+        global $_metrocatch_uc_paypal_redirect;
+        $_metrocatch_uc_paypal_redirect = (isset($form_state['redirect']) ? $form_state['redirect'] : '<front>');
+        // paypal_wps requires a POST query to the paypal server, so, we need to construct
+        // small form, that contains submit button and hidden values
+        $form['#suffix'] = drupal_get_form('uc_paypal_wps_form', $form_state['storage']['order']);
+        // unset our "submit" button
+        unset($form['submit']);
+      }
+      return $form;
+      break;
+  }
+}
+
+/**
+ * Create new product with given title, sku and price
+ *
+ * @param float $price
+ *   product price
+ * @param string $sku
+ *   product's unique "model"
+ *
+ * @return int
+ *   nid of created product
+ */
+function metrocatch_uc_create_product($title, $sku, $price) {
+  $p = new stdClass();
+  $p->type = 'product';
+  $p->uid = 1;
+  $p->comment = 0;
+  $p->created = $p->changed = time();
+  $p->title = $title;
+  $p->promote = $p->moderate = 0;
+  $p->body = '';
+  $p->list_price = $p->sell_price = $p->cost = $price;
+  $p->shippable = 0;
+  $p->model = $sku;
+  node_save($p);
+  return $p->nid;
+}
+
+/**
+ * Format price for output
+ *
+ * @param float $price
+ *   price to format
+ *
+ * @return string
+ *   formatted price, ready for output
+ */
+function metrocatch_uc_format_price($price) {
+  return uc_price($price);
+}
+
+/**
+ * Create discount coupon.
+ *
+ * @param int $uid
+ *   Coupon owner's user id.
+ *
+ * @param int $discount
+ *   Discount value, in percents.
+ *
+ * @return string
+ *   Coupon code, that user can enter in the purchase forms.
+ */
+function metrocatch_uc_create_discount_coupon($uid, $discount) {
+  $coupon = new stdClass();
+  $coupon->name = 'coupon_'. $uid;
+  $coupon->code = drupal_strtoupper(metrocatch_uc_random_string(6));
+  $coupon->value = $discount;
+  $coupon->type = 'percentage';
+  $coupon->status = 1;
+  $coupon->valid_from = $coupon->valid_until = 0;
+  $coupon->max_uses = 1;
+  $coupon->minimum_order = 0;
+  $coupon->created = time();
+  $coupon->bulk = 0;
+  $coupon->data = array(
+    'bulk_length' => 0,
+    'max_uses_per_user' => 1,
+    'apply_to' => 'subtotal',
+    'users' => array($uid => $uid),
+    'wholesale' => 1,
+  );
+  uc_coupon_save($coupon);
+  return $coupon->code;
+}
+
+/**
+ * Get array of user's active coupons.
+ *
+ * @param int $uid
+ *   User id.
+ *
+ * @return array
+ *   Array (coupon code => discount value).
+ */
+function metrocatch_uc_get_user_coupons($uid) {
+  $codes = array();
+  $rows = db_query("SELECT code, value FROM {uc_coupons} WHERE name='%s' AND status=1", 'coupon_'. $uid);
+  while ($row = db_fetch_object($rows)) {
+    $codes[$row->code] = intval($row->value);
+  }
+  return $codes;
+}
+
+/**
+ * @} End of "name api".
+ */
+
+/**
+ * @name helper Helper functions.
+ * @{
+ */
+
+/**
+ * Get a random string (used in coupon codes).
+ *
+ * @param type $length
+ *   (Optional) string length.
+ *
+ * @return stringh
+ *   Generated code.
+ */
+function metrocatch_uc_random_string($length = NULL) {
+  $code = md5(uniqid(rand(), TRUE));
+  return $length ? drupal_substr($code, 0, $length) : $code;
+}
+
+
+/**
+ * Helper #after_build callback for purchase form
+ * Unset wrong $form['action'], that can appears after ajax operations
+ */
+function metrocatch_uc_unset_wrong_ajax_action(&$form, $form_state) {
+  // fix of invalid $form['#action] on ajax forms bug
+  if (strpos($form['#action'], 'ajax-') !== FALSE) {
+    unset($form['#action']);
+  }
+  return $form;
+}
+
+/**
+ * Validate handler for purchase form
+ */
+function metrocatch_uc_purchase_form_purchase_validate(&$form, &$form_state) {
+  switch ($form_state['storage']['step']) {
+    case 'fill_form':
+      // validate CC fields, only if CC payment method selected
+      if ($form_state['values']['payment_method'] == 'credit') {
+        // Validate all fields
+        // card number
+        if (!_valid_card_number($form_state['values']['cc_info']['cc_number'])) {
+          form_error($form['payment']['cc_info']['cc_number'], t('Invalid credit card number.'));
+        }
+        // card expiration
+        if (!_valid_card_expiration($form_state['values']['cc_info']['cc_exp_month'], $form_state['values']['cc_info']['cc_exp_year'])) {
+          form_error($form['payment']['cc_info']['cc_exp_month'], t('Invalid expiration date.'));
+          form_error($form['payment']['cc_info']['cc_exp_year'], ' '); /// todo: remove this line and handle error display in theme function/template
+        }
+        // card cvv
+        if (!_valid_cvv($form_state['values']['cc_info']['cc_cvv'])) {
+          form_error($form['payment']['cc_info']['cc_cvv'], t('Invalid security code.'));
+        }
+      }
+      // validate coupon, if not empty
+      if ($form_state['values']['promo_code']) {
+        $coupon = uc_coupon_find($form_state['values']['promo_code']);
+        if ($coupon === FALSE) {
+          form_error($form['promo_code'], t('Promo code not found.'));
+        }
+      }
+      else {
+        unset($_SESSION['uc_coupon']);
+      }
+      break;
+    case 'review':
+      if ($form_state['clicked_button']['#name'] == 'submit') {
+        // start purchase process
+        _metrocatch_uc_process_order($form, $form_state);
+      }
+      break;
+  }
+}
+
+/**
+ * Submit handler for purchase form (called only on "submit" button click,
+ * so this form can be safely included in other form)
+ */
+function metrocatch_uc_purchase_form_purchase_submit($form, &$form_state) {
+  if (isset($form_state['ahah_submission'])) {
+    return;
+  }
+  switch ($form_state['storage']['step']) {
+    case 'fill_form':
+      // 1. create or load order
+      global $user;
+      if (isset($form_state['storage']['order'])) {
+        $order = $form_state['storage']['order'];
+      }
+      else {
+        $order = uc_order_new($user->uid);
+      }
+      // some orders can stay forever in uc_orders table in "in_checkout" state, we need to delete them
+      metrocatch_uc_delete_abandoned_orders($user->uid, array($order->order_id));
+      // 2. fill order's products
+      if (isset($order->order_id)) {
+        // delete old products of this order, if any
+        db_query("DELETE FROM {uc_order_products} WHERE order_id=%d", $order->order_id);
+      }
+      // get order products from product callback
+      $order->products = $form_state['storage']['products_callback']('products', $form, $form_state);
+      if (!is_array($order->data)) {
+        $order->data = array();
+      }
+      // save product callback to order (for calling it after payment received action)
+      $order->data['metrocatch_uc_purchase_callback'] = $form_state['storage']['products_callback'];
+      if (isset($form_state['storage']['file'])) {
+        $order->data['metrocatch_callback_file'] = $form_state['storage']['file'];
+      }
+      // fill order products by some additional information, taken from product nodes
+      foreach ($order->products as $key => $product) {
+        $node = node_load($product->nid);
+        if (!isset($product->data)) {
+          $order->products[$key]->data = array();
+        }
+        $order->products[$key]->title = $node->title;
+        $order->products[$key]->order_id = $order->order_id;
+        $order->products[$key]->model = $node->model;
+        $order->products[$key]->cost = $product->price;
+      }
+      // 3. pouplate billing info
+      $v = $form_state['values'];
+      $order->billing_first_name = $v['first_name'];
+      $order->billing_last_name = $v['last_name'];
+      $order->billing_street1 = $v['street_address'];
+      $order->billing_street2 = $v['street_address2'];
+      $order->billing_city = $v['city'];
+      $order->billing_zone = $v['state'];
+      $order->billing_postal_code = $v['zip'];
+      // 4. save order with products and new billing info
+      uc_order_save($order);
+      // 5. load line items
+      $order->line_items = uc_order_load_line_items($order, TRUE);
+      // 6. calculate total
+      $order->order_total = uc_order_get_total($order, TRUE);
+      // 7. set payment method details
+      if ($form_state['values']['payment_method'] == 'credit') {
+        // pay by credit card
+        $order->payment_method = 'credit';
+        $order->payment_details = array(
+          'cc_type' => '',
+          'cc_owner' => '',
+          'cc_number' => $v['cc_info']['cc_number'],
+          'cc_start_month' => '',
+          'cc_start_year' => '',
+          'cc_exp_month' => $v['cc_info']['cc_exp_month'],
+          'cc_exp_year' => $v['cc_info']['cc_exp_year'],
+          'cc_issue' => '',
+          'cc_cvv' => $v['cc_info']['cc_cvv'],
+          'cc_bank' => '',
+        );
+      }
+      else {
+        // Pay by paypal.
+        $order->payment_method = 'paypal_wps';
+      }
+      // 8. check for coupon code
+      if ($form_state['values']['promo_code'] != '') {
+        $coupon = uc_coupon_validate($form_state['values']['promo_code'], $order);
+        if ($coupon->valid) {
+          // this variable used in uc_coupon_order().
+          $_SESSION['uc_coupon'] = $form_state['values']['promo_code'];
+        }
+        else {
+          drupal_set_message($coupon->message);
+        }
+      }
+      else {
+        // during for filling user can enter some coupon code and refuse to use it,
+        // we need to be sure, that no coupon is attached to order, if corresponding field is empty
+        unset($_SESSION['uc_coupon']);
+        unset($order->data['coupon']);
+        // recreate line items
+        db_query("DELETE FROM {uc_order_line_items} WHERE order_id = %d", $order->order_id);
+        $order->line_items = uc_order_load_line_items($order, FALSE);
+        $order->order_total = uc_order_get_total($order, FALSE);
+      }
+      // save order again with payment details and line items
+      uc_order_save($order);
+      // 9. save order to storage
+      $order = $form_state['storage']['order'] = uc_order_load($order->order_id);
+      // 10. Check for "free order" option.
+      $total = round($order->order_total, 2);
+      if ($total == 0) {
+        $form_state['storage']['order']->payment_method = $order->payment_method = 'metrocatch_uc_free_order';
+        $form_state['storage']['metrocatch_uc_free_order'] = TRUE;
+        uc_order_save($order);
+        $form_state['storage']['order'] = uc_order_load($order->order_id);
+      }
+      else {
+        unset($form_state['storage']['metrocatch_uc_free_order']);
+      }
+      // go to 'review' step
+      $form_state['storage']['step'] = 'review';
+      //save old $form_state values, they can be used, if user decides to click "back" button
+      $form_state['storage']['old_values'] = $form_state['values'];
+      break;
+    case 'review':
+      // go to previous form step, if "back" button was pressed
+      if ($form_state['clicked_button']['#name'] == 'back') {
+        $form_state['storage']['step'] = 'fill_form';
+      }
+      else {
+        // order validated, submitted and reviewed, clear form storage
+        unset($form_state['storage']);
+      }
+      break;
+  }
+}
+
+/**
+ * Purchase order, helper function to metrocatch_uc_purchase_form_purchase_validate().
+ * Purchase process goes here
+ */
+function _metrocatch_uc_process_order(&$form, &$form_state) {
+  $order = $form_state['storage']['order'];
+  // Check order by other modules (copied from uc_cart_checkout_review_form_submit()).
+  $error = FALSE;
+  // Invoke it on a per-module basis instead of all at once.
+  // CC details are truncated here, we need to restore them.
+  if (isset($order->payment_details['cc_number'])) {
+    $old_payment_details = $order->payment_details;
+    $order->payment_details['cc_number'] = $form_state['storage']['old_values']['cc_info']['cc_number'];
+    $order->payment_details['cc_cvv'] = $form_state['storage']['old_values']['cc_info']['cc_cvv'];
+    global $cc_payment_process;
+    $cc_payment_process = $order->payment_details;
+  }
+  foreach (module_list() as $module) {
+    $function = $module .'_order';
+    if (function_exists($function) && $function != 'date_order') {
+      // $order must be passed by reference.
+      $result = $function('submit', $order, NULL);
+      $msg_type = 'status';
+      if ($result[0]['pass'] === FALSE) {
+        $error = TRUE;
+        $msg_type = 'error';
+      }
+      if (!empty($result[0]['message'])) {
+        drupal_set_message($result[0]['message'], $msg_type);
+      }
+      // Stop invoking the hooks if there was an error.
+      if ($error) {
+        break;
+      }
+    }
+  }
+  if (isset($old_payment_details)) {
+    $order->payment_details = $old_payment_details;
+  }
+  if ($error) {
+    form_error($form, t('Error'));
+  }
+  else {
+    //save order to database
+    $refreshed_order = uc_order_load($order->order_id);
+    $refreshed_order->payment_method = $order->payment_method;
+    $refreshed_order->payment_details = $order->payment_details;
+    uc_order_save($refreshed_order);
+  }
+}
+
+/**
+ * Delete orders of given user, that in "in_checkout" state
+ *
+ * @param int $uid
+ *   user id
+ * @param array $exclude
+ *   array of id of orders, that will stay in the table
+ */
+function metrocatch_uc_delete_abandoned_orders($uid, $exclude) {
+  $oids = db_query("SELECT order_id FROM {uc_orders} WHERE uid=%d AND order_status='in_checkout' AND order_id NOT IN(". db_placeholders($exclude) .")", array_merge(array($uid), $exclude));
+  while ($order_id = db_result($oids)) {
+    uc_order_delete($order_id);
+  }
+}
+
+/**
+ * Decrypt data by ubercart key
+ *
+ * @param string $crypted
+ *   value to derypt
+ * @param bool $unserialize
+ *   unserialize decrypted value, or not
+ *
+ * @return mixed
+ *   original (decrypted) value
+ */
+function metrocatch_uc_decrypt($crypted, $unserialize = TRUE) {
+  $crypt = new uc_encryption_class;
+  $decrypted = $crypt->decrypt(uc_credit_encryption_key(), $crypted);
+  uc_store_encryption_errors($crypt, 'penny_uc');
+  return $unserialize ? unserialize($decrypted) : $decrypted;
+}
+
+/**
+ * Access callback to purchase history page
+ */
+function metrocatch_uc_purchase_history_access($uid) {
+  global $user;
+  return ($user->uid && $user->uid == $uid) || $user->uid == 1;
+}
+
+/**
+ * @} End of "name helper"
+ */
+
+/**
+ * @name theme Theme implementations.
+ * @{
+ */
+
+/**
+ * Theme function for 'metrocatch_uc_payment_information'.
+ */
+function theme_metrocatch_uc_payment_information() {
+  $out = '<div class="description">'. t('Please provide your credit card information below.') .'</div>';
+  $out = '<div class="cc_types">';
+  $cc_types = array('visa', 'mastercard', 'discover'); // copied from uc_credit
+  $img_path = base_path() . drupal_get_path('module', 'uc_credit');
+  foreach ($cc_types as $type) {
+    $out .= '<img class="uc-credit-cctype uc-credit-cctype-' . $type . '" src="'. $img_path .'/images/'. $type .'.gif"/>';
+  }
+  // paypal image
+  $out .= ' <img src="https://www.paypal.com/en_US/i/logo/PayPal_mark_37x23.gif"/>';
+  return $out .= '</div>';
+}
+
+/**
+ * Preprocess function for 'metrocatch_uc_order_review'.
+ *
+ * @see metrocatch-uc-order-review.tpl.php
+ *
+ * @param array $vars
+ *   array with the next keys
+ *   - 'order': Ubercart order object
+ */
+function template_preprocess_metrocatch_uc_order_review(&$vars) {
+  $order = $vars['order'];
+  $product_rows = array();
+  foreach ($order->products as $product) {
+    $product_rows[] = array(
+      $product->qty .'x',
+      $product->title,
+      uc_price($product->price),
+    );
+  }
+  $vars['products'] = theme('table', array(), $product_rows);
+  $vars['billing_info'] = theme('metrocatch_uc_billing_address', $order);
+  module_load_include('.inc', 'uc_payment', 'uc_payment_checkout_pane');
+  $payment_parts = uc_checkout_pane_payment('review', $order, NULL);
+  $payment_rows = array();
+  foreach ($payment_parts as $part) {
+    if ($part['title'] == 'CVV') {
+      continue;
+    }
+    $payment_rows[] = array(
+      $part['title'],
+      $part['data'],
+    );
+  }
+  $vars['payment_method'] = theme('table', array(), $payment_rows);
+}
+
+/**
+ * Theme function for 'metrocatch_uc_billing_address'.
+ *
+ * @param object $order
+ *   Ubercart order object
+ */
+function theme_metrocatch_uc_billing_address($order) {
+  $parts = array();
+  $parts[] = $order->billing_first_name .' '. $order->billing_last_name;
+  $parts[] = $order->billing_street1;
+  if (!empty($order->billing_street1)) {
+    $parts[] = $order->billing_street2;
+  }
+  $parts[] = $order->billing_city .' '. uc_zone_get_by_id($order->billing_zone) .' '. $order->billing_postal_code;
+  return '<div class="metrocatch-uc-billing-address">'. implode('<br/>', $parts) .'</div>';
+}
+
+/**
+ * Preprocess function for 'metrocatch_uc_user_purchase' theme handler
+ *
+ * @see metrocatch-uc-user-purchase.tpl.php
+ */
+function template_preprocess_metrocatch_uc_user_purchase(&$vars) {
+  $order = $vars['order'];
+  $product = $order->products[0];
+  if ($product->model == 'metrocatch_connect') {
+    $vars['title'] = format_plural($product->qty, '1 Connection', '@count Connections');
+  }
+  else {
+    $vars['title'] = $product->title;
+  }
+  $vars['type'] = t('Single');
+  $vars['total'] = metrocatch_uc_format_price($order->order_total);
+  $vars['date'] = format_date($order->created, 'custom', variable_get('date_format_metrocatch_uc_transaction_date', 'F j, Y'));
+  if (isset($order->data['coupon'])) {
+    $coupon = uc_coupon_find($order->data['coupon']);
+    if ($coupon->type == 'percentage') {
+      $vars['promotion'] = t('%@percent off', array('@percent' => $coupon->value));
+    }
+    else {
+      // scan line items for "coupon" type
+      $coupon_item = NULL;
+      foreach ($order->line_items as $item) {
+        if ($item['type'] == 'coupon') {
+          $coupon_item = $item;
+          break;
+        }
+      }
+      $amount = -$coupon_item['amount'];
+      $vars['promotion'] = '-'. metrocatch_uc_format_price($amount);
+    }
+  }
+}
+
+/**
+ * Preprocess function for 'metrocatch_uc_purchase_history' theme handler
+ *
+ * @see metrocatch-uc-purchase-history.tpl.php
+ */
+function template_preprocess_metrocatch_uc_purchase_history(&$vars) {
+  $themed_orders = array();
+  foreach ($vars['orders'] as $order) {
+    $themed_orders[] = theme('metrocatch_uc_user_purchase', $order);
+  }
+  $vars['purchases'] = theme('item_list', $themed_orders);
+}
+
+/**
+ * @} End of "name theme".
+ */

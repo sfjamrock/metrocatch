@@ -1,0 +1,314 @@
+<?php
+// $Id: vr_campaign.module,v 1.1.2.8 2010/06/22 17:10:16 jbomb Exp $
+
+/**
+ * hook_menu implementaion
+ */
+function vr_campaign_menu() {
+  // Primary administration panel.
+  $items['admin/build/vr/campaign'] = array(
+    'title' => t('Manage Campaigns'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_campaign_admin'),
+    'access arguments' => array('administer VerticalResponse'),
+    'file' => 'vr_campaign.admin.inc',
+    );
+  // Node links for managing campaign.
+  $items['node/%node/enews-export/vr'] = array(
+    'title' => t('Campaign Attributes'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_campaign_attributes_form', 1),
+    'access callback' => '_enews_access',
+    'access arguments' => array(1),
+    'file' => 'vr_campaign_forms.inc',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    );
+  $items['node/%node/enews-export/vr-content'] = array(
+    'title' => t('Campaign Content'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_campaign_content_form', 1),
+    'access callback' => '_enews_access',
+    'access arguments' => array(1),
+    'file' => 'vr_campaign_forms.inc',
+    'type' => MENU_LOCAL_TASK,
+    );
+  $items['node/%node/enews-export/vr-preview'] = array(
+    'title' => t('Test/Launch Campaign'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('vr_campaign_preview_form', 1),
+    'access callback' => '_enews_access',
+    'access arguments' => array(1),
+    'file' => 'vr_campaign_forms.inc',
+    'type' => MENU_LOCAL_TASK,
+    );
+  $items['node/%node/enews-export/vr-history'] = array(
+    'title callback' => 'vr_campaign_decline_history_title',
+    'title arguments' => array(1),
+    'page callback' => 'vr_campaign_decline_history',
+    'page arguments' => array(1),
+    'access callback' => 'vr_campaign_decline_access',
+    'access arguments' => array(1),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 11,
+    );
+  return $items;
+}
+
+/**
+ * hook_menu_alter implementation
+ * 
+ * TODO: can't say i'm crazy about this, but I was hoping to 
+ * reduce the number of tabs on newsletter nodes, since the manual
+ * export is not necessarily required for the VR integration.
+ * 
+ * Perhaps we can have a seperate VR tab for all this nonsense.
+ */
+function vr_campaign_menu_alter(&$items) {
+  $items['node/%node/enews-export/html']['type'] = MENU_SUGGESTED_ITEM;
+  $items['node/%node/enews-export/plain']['type'] = MENU_SUGGESTED_ITEM;
+  $items['node/%node/enews-export']['page callback'] = 'drupal_get_form';
+  $items['node/%node/enews-export']['page arguments'] = array('vr_campaign_attributes_form', 1);
+  $items['node/%node/enews-export']['file'] = 'vr_campaign_forms.inc';
+  $items['node/%node/enews-export']['file path'] = drupal_get_path('module', 'vr_campaign');
+}
+
+/**
+ * Add configuration fields to VerticalResponse setting form.
+ * 
+ * The following fields will store default values for all email campaigns.
+ */
+function vr_campaign_form_vr_settings_form_alter(&$form, &$form_state) {
+  $form['campaign'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Default Campaign Settings'),
+    '#description' => t('Manage default settings for email campaigns.'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    );
+  $form['campaign']['vr_campaign_from_label'] = array(
+    '#type' => 'textfield',
+    '#title' => t('From Label'),
+    '#default_value' => variable_get('vr_campaign_from_label', variable_get('site_mail', NULL)),
+    '#description' => t('This value will be displayed in the newsletter from field.'),
+    '#required' => TRUE,
+    );
+  $form['campaign']['vr_campaign_support_email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Support Email'),
+    '#default_value' => variable_get('vr_campaign_support_email', variable_get('site_mail', NULL)),
+    '#description' => t('This value will be used to as the "reply-to" email address 
+                         for a newsletter.'),
+    '#required' => TRUE,
+    );
+  $form['campaign']['vr_campaign_unsub_message'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Unsubscribe Message'),
+    '#description' => t('VerticalResponse will append a link to unsubscribe to this text.'),
+    '#required' => TRUE,
+    '#default_value' => variable_get('vr_campaign_unsub_message', t('You elected to receive this broadcast, you may remove yourself from this list using the following link:')),
+    );
+  $form['buttons']['#weight'] = 100;
+}
+
+/**
+ * hook_nodeapi implementation
+ * 
+ * Create a VerticalResponse email campaign for every newsletter
+ * node.
+ */
+function vr_campaign_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  if (variable_get('enews_' . $node->type, FALSE) == FALSE) {
+    return; 
+  }
+  switch ($op) {
+    case 'prepare':
+      $campaign = vr_campaign_retrieve_campaign($node);
+      if (!empty($campaign->display_status) AND $campaign->display_status != 'active') {
+        $message = t('This status of this email campaign is %status. Therefore, changes
+        made to this content will not be passed to VerticalResponse.',
+        array(
+          '%status' => ucfirst($campaign->display_status),
+          )
+        );
+        drupal_set_message($message);
+      }
+      break;
+    case 'insert':      
+      $vrid = vr_campaign_create_campaign($node);
+      if (!empty($vrid)) {
+        $sql = 'INSERT INTO {vr_campaign} (nid, vrid) VALUES (%d, %d)';
+        db_query($sql, $node->nid, $vrid);
+      }
+      break;
+    case 'update':
+      // TODO:  It is possible that the campaign has been deleted in VerticalResponse
+      // we need to confirm that it exists, and recreate it if it does not.
+      $campaign = vr_campaign_retrieve_campaign($node);
+      $content['freeform_text'] = drupal_html_to_text(theme('enews_emogrify', $node));
+      $content['freeform_html'] = theme('enews_emogrify', $node);
+      vr_campaign_set_campaign_content($campaign->id, $content);
+      break;
+  }
+}
+
+/**
+ * vr_campaign_set_campaign_attributes
+ * 
+ * Set campaign attributes
+ * 
+ * @param int
+ *  VerticalResponse campaign id.
+ * @param array
+ *  keys are attribute names values are the values.
+ */
+function vr_campaign_set_campaign_attributes($vrid, $attributes) {
+  foreach ($attributes as $key => $value) {
+    $param = array(
+      'campaign_id' => $vrid,
+      'name' => $key,
+      'value' => $value,
+      );
+    vr_api('setEmailCampaignAttribute', $param);
+  }
+}
+
+/**
+ * 
+ */
+function vr_campaign_set_campaign_content($vrid, $content) {
+  foreach ($content as $key => $value) {
+    $param = array(
+      'campaign_id' => $vrid,
+      'content' => array(
+        'type' => $key,
+        'copy' => $value,
+        ),
+      );
+    vr_api('setEmailCampaignContent', $param);
+  }
+}
+/**
+ * Retrieve the corresponding campaign object for a node.
+ */
+function vr_campaign_retrieve_campaign($node, $lists = TRUE, $content = TRUE) {
+  $sql = 'SELECT vrid FROM {vr_campaign} WHERE nid = %d';
+  $result = db_query($sql, $node->nid);
+  $vrid = db_result($result);
+  $param = array(
+    'campaign_ids' => array($vrid),
+    'limit' => 1,
+    'include_lists' => $lists,
+    'include_content' => $content,
+    );
+  $campaign = vr_api('enumerateEmailCampaigns', $param);
+  return $campaign[0];
+}
+
+/**
+ * Create a VerticalResponse email campaign from a node.
+ * 
+ * TODO: Look into using the canvas campaign type.
+ */
+function vr_campaign_create_campaign($node) {
+  // Set basic parameters
+  $types = node_get_types();
+  $node_type = $types[$node->type]->name;
+  $param['email_campaign'] = array(
+   'name' => $node_type . ' [' . $node->nid . '] ' . date('Y-m-d g:ia'),
+   'type' => 'canvas',
+   'from_label' => variable_get('vr_campaign_from_label', NULL),
+   'support_email' => variable_get('vr_campaign_support_email', NULL),
+   'send_friend' => 'true',
+   'redirect_url' => url('node/' . $node->nid, array('absolute' => TRUE)),
+   'contents' => array(
+     // HTML
+     array(
+       'type' => 'freeform_html',
+       'copy' => theme('enews_emogrify', $node),
+       ),
+     // Plain text
+     array(
+       'type' => 'freeform_text',
+       'copy' => drupal_html_to_text(theme('enews_emogrify', $node)),
+       ),
+     array(
+       'type' => 'subject',
+       'copy' => t($node->title),
+       ),
+     array(
+       'type' => 'unsub_message',
+       'copy' => t(check_plain(variable_get('vr_campaign_unsub_message', NULL))),
+       ),
+     ),
+    );
+  return vr_api('createEmailCampaign', $param, TRUE);
+}
+
+
+/**
+ * Provide a list of reasons an e-mail campaign was denied circulation.
+ */
+function vr_campaign_decline_history($node) {
+ $history = _vr_campaign_decline_history($node);
+ foreach ($history as $decline) {
+   $rows[] = array(
+     array(
+       'data' => date('F j, Y g:ia', strtotime($decline->date)),
+       'width' => '25%',
+       ),
+     check_plain($decline->reason),
+     );
+ }
+ $rows = array_reverse($rows, TRUE);
+ return theme('table', array(t('Date'), t('Reason')), $rows);
+}
+
+/**
+ * Title callback for decline history links.
+ * 
+ * @param object
+ *  A node object
+ * @return string
+ *  A title for hook_menu
+ */
+function vr_campaign_decline_history_title($node) {
+  $count = count(_vr_campaign_decline_history($node));
+  return t('Decline History (@count)', array('@count' => $count));
+}
+
+/**
+ * function vr_campaign_decline_access
+ * 
+ * Remove decline information links when there is no decline information.
+ */
+function vr_campaign_decline_access($node) {
+  if (_enews_access($node) === FALSE) {
+    return FALSE;
+  }
+  $count = count(_vr_campaign_decline_history($node));
+  if ($count > 0) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Retrieve and statically cache decline history for VerticalResponse
+ * campaign nodes.
+ * 
+ * @param object
+ *  A node object
+ * @return array
+ *  An array of objects containing date and reason properties.
+ */
+function _vr_campaign_decline_history($node) {
+  static $history;
+  if (empty($history[$node->nid])) {
+    $campaign = vr_campaign_retrieve_campaign($node);
+    $param['campaign_id'] = $campaign->id;
+    $history[$node->nid] = vr_api('getEmailCampaignDeclineHistory', $param);
+  }
+  return $history[$node->nid];
+}
